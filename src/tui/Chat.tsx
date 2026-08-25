@@ -46,8 +46,8 @@ import {
 } from "./mentions.js";
 import { isCtrlKey } from "./keys.js";
 import { answeringIndicator, busyMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
-import { DEFAULT_POLL_MS, mergePolledTranscript, shouldPollTranscript } from "./poll.js";
-import { pollChatSnapshot } from "./chatPoll.js";
+import { DEFAULT_POLL_MS, mergePolledTranscript } from "./poll.js";
+import { pollChatSnapshot, shouldApplyPollTranscript } from "./chatPoll.js";
 
 type Props = {
   client: HostClient;
@@ -170,6 +170,7 @@ export function Chat({
   const [mentionDismissed, setMentionDismissed] = useState(false);
   const [pollReady, setPollReady] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const transcriptRevisionRef = useRef(0);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const statusRef = useRef(status);
@@ -223,6 +224,7 @@ export function Chat({
   const prevRowCountRef = useRef(rowCount);
 
   const load = useCallback(async () => {
+    transcriptRevisionRef.current += 1;
     setPollReady(false);
     setStatus({ kind: "loading" });
     setScrollOffset(0);
@@ -292,6 +294,7 @@ export function Chat({
     const tick = async () => {
       if (cancelled) return;
       const statusAtStart = statusRef.current.kind;
+      const transcriptRevisionAtStart = transcriptRevisionRef.current;
       const snapshot = await pollChatSnapshot({
         client,
         agentId,
@@ -299,10 +302,13 @@ export function Chat({
       });
       if (cancelled) return;
       if (
-        snapshot.transcriptFetched &&
-        snapshot.history &&
-        shouldPollTranscript(statusAtStart) &&
-        shouldPollTranscript(statusRef.current.kind)
+        shouldApplyPollTranscript({
+          snapshot,
+          statusAtStart,
+          statusNow: statusRef.current.kind,
+          transcriptRevisionAtStart,
+          transcriptRevisionNow: transcriptRevisionRef.current,
+        })
       ) {
         setTurns((prev) => mergePolledTranscript(prev, snapshot.history!));
       }
@@ -325,6 +331,7 @@ export function Chat({
       const prompt = text.trim();
       if (!prompt || statusRef.current.kind === "sending") return;
 
+      transcriptRevisionRef.current += 1;
       const optimistic: ChatTurn = {
         id: `local-${Date.now()}`,
         role: "user",

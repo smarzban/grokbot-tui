@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Agent, ChatTurn, HostClient } from "../src/client/types.js";
-import { pollChatSnapshot } from "../src/tui/chatPoll.js";
+import { pollChatSnapshot, shouldApplyPollTranscript } from "../src/tui/chatPoll.js";
 import { mergePolledTranscript } from "../src/tui/poll.js";
 
 const ROOM_ID = "55555555-5555-4555-8555-555555555555";
@@ -37,9 +37,24 @@ function fakeClient(options: {
 }
 
 /** Mirror Chat.tick transcript apply: merge host tail against current UI state. */
-function applyPollTurns(prev: ChatTurn[], snapshot: Awaited<ReturnType<typeof pollChatSnapshot>>): ChatTurn[] {
-  if (!snapshot.transcriptFetched || !snapshot.history) return prev;
-  return mergePolledTranscript(prev, snapshot.history);
+function applyPollTurns(
+  prev: ChatTurn[],
+  snapshot: Awaited<ReturnType<typeof pollChatSnapshot>>,
+  transcriptRevisionAtStart = 0,
+  transcriptRevisionNow = 0,
+): ChatTurn[] {
+  if (
+    !shouldApplyPollTranscript({
+      snapshot,
+      statusAtStart: "idle",
+      statusNow: "idle",
+      transcriptRevisionAtStart,
+      transcriptRevisionNow,
+    })
+  ) {
+    return prev;
+  }
+  return mergePolledTranscript(prev, snapshot.history!);
 }
 
 test("pollChatSnapshot fetches transcript with the selected agent id", async () => {
@@ -79,18 +94,16 @@ test("Chat-style apply keeps room optimistic turns when host tail is stale", asy
   assert.equal(next.length, 2);
 });
 
-test("Chat-style apply does not clobber a fresh 1:1 reply when the tick started while sending", async () => {
-  const stale: ChatTurn[] = [
-    { id: "local-1", role: "user", speaker: "you", text: "hi" },
-  ];
+test("Chat-style apply does not clobber a fresh 1:1 reply when a send races an idle poll", async () => {
+  const stale: ChatTurn[] = [{ id: "0", role: "assistant", speaker: "Ada", text: "earlier" }];
   const fresh: ChatTurn[] = [
     { id: "1", role: "user", speaker: "you", text: "hi" },
     { id: "2", role: "assistant", speaker: "Ada", text: "hello" },
   ];
   const client = fakeClient({ transcript: stale });
-  const snapshot = await pollChatSnapshot({ client, agentId: ADA_ID, statusKind: "sending" });
-  assert.equal(snapshot.transcriptFetched, false);
-  assert.deepEqual(applyPollTurns(fresh, snapshot), fresh);
+  const snapshot = await pollChatSnapshot({ client, agentId: ADA_ID, statusKind: "idle" });
+  assert.equal(snapshot.transcriptFetched, true);
+  assert.deepEqual(applyPollTurns(fresh, snapshot, 3, 4), fresh);
 });
 
 test("pollChatSnapshot returns roster when listAgents succeeds", async () => {

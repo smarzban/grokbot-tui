@@ -10,6 +10,23 @@ export type PollChatSnapshot = {
   rosterFetched: boolean;
 };
 
+/** True when this poll did not race with a local transcript update. */
+export function shouldApplyPollTranscript(input: {
+  snapshot: PollChatSnapshot;
+  statusAtStart: string;
+  statusNow: string;
+  transcriptRevisionAtStart: number;
+  transcriptRevisionNow: number;
+}): boolean {
+  return (
+    input.snapshot.transcriptFetched &&
+    input.snapshot.history != null &&
+    input.transcriptRevisionAtStart === input.transcriptRevisionNow &&
+    shouldPollTranscript(input.statusAtStart) &&
+    shouldPollTranscript(input.statusNow)
+  );
+}
+
 /** One idle poll cycle: transcript tail (when allowed) plus roster. */
 export async function pollChatSnapshot(input: {
   client: HostClient;
