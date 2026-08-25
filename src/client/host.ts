@@ -1,6 +1,6 @@
 import { GrokBot } from "@adam91holt/grokbot-sdk";
 import { mapHostError } from "./errors.js";
-import { asAgentRow, turnsFromHostTranscript, unwrapAgentList } from "./transcript.js";
+import { asAgentRow, enrichRoster, turnsFromHostTranscript, unwrapAgentList } from "./transcript.js";
 import {
   DEFAULT_TRANSCRIPT_LIMIT,
   type Agent,
@@ -42,9 +42,9 @@ export class GatewayHostClient implements HostClient {
       const agents: Agent[] = [];
       for (const row of unwrapAgentList(raw)) {
         const agent = asAgentRow(row);
-        if (agent && !agent.isGroup) agents.push(agent);
+        if (agent) agents.push(agent);
       }
-      return agents;
+      return enrichRoster(agents);
     } catch (err) {
       throw mapHostError(err, this.#secret);
     }

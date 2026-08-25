@@ -25,6 +25,7 @@ import { isNotFoundError, mapHostError } from "./errors.js";
 import {
   asAgentRow,
   assistantCount,
+  enrichRoster,
   lastAssistantText,
   turnsFromHostTranscript,
 } from "./transcript.js";
@@ -126,9 +127,9 @@ export class DesktopHostClient implements HostClient {
       const agents: Agent[] = [];
       for (const row of rows) {
         const agent = asAgentRow(row);
-        if (agent && !agent.isGroup) agents.push(agent);
+        if (agent) agents.push(agent);
       }
-      return agents;
+      return enrichRoster(agents);
     } catch (err) {
       throw mapDesktopError(err, this.#session);
     }

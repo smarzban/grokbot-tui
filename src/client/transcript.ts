@@ -1,6 +1,6 @@
 import { entriesFromTranscriptPayload, turnsFromTranscriptEntries } from "@adam91holt/grokbot-sdk";
 import { basename } from "node:path";
-import type { ChatImage, ChatTurn } from "./types.js";
+import type { Agent, AgentMember, ChatImage, ChatTurn } from "./types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -15,23 +15,63 @@ export function unwrapAgentList(raw: unknown): unknown[] {
   return [];
 }
 
-export function asAgentRow(value: unknown): {
-  id: string;
-  name: string;
-  title?: string;
-  isGroup: boolean;
-  isRunning?: boolean;
-} | null {
+function stringIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function namedMembers(value: unknown): AgentMember[] {
+  if (!Array.isArray(value)) return [];
+  const out: AgentMember[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) continue;
+    const id = typeof row.id === "string" ? row.id : typeof row.agentId === "string" ? row.agentId : "";
+    const name = typeof row.name === "string" && row.name.length > 0 ? row.name : "";
+    if (id && name) out.push({ id, name });
+  }
+  return out;
+}
+
+export function asAgentRow(value: unknown): Agent | null {
   if (!isRecord(value)) return null;
   const id = typeof value.id === "string" ? value.id : typeof value.agentId === "string" ? value.agentId : "";
   if (!id) return null;
   const name = typeof value.name === "string" && value.name.length > 0 ? value.name : id;
   const title = typeof value.title === "string" && value.title.length > 0 ? value.title : undefined;
-  const memberIds = value.memberIds ?? value.memberAgentIds;
+  const memberIds = stringIds(value.memberIds ?? value.memberAgentIds);
+  const members = namedMembers(value.remoteMembers ?? value.members);
   const isGroup =
-    value.isGroup === true || (value.isGroup == null && Array.isArray(memberIds) && memberIds.length > 0);
+    value.isGroup === true || (value.isGroup == null && memberIds.length > 0);
   const isRunning = typeof value.isRunning === "boolean" ? value.isRunning : undefined;
-  return { id, name, ...(title ? { title } : {}), isGroup, ...(isRunning !== undefined ? { isRunning } : {}) };
+  return {
+    id,
+    name,
+    ...(title ? { title } : {}),
+    isGroup,
+    ...(isRunning !== undefined ? { isRunning } : {}),
+    ...(memberIds.length > 0 ? { memberIds } : {}),
+    ...(members.length > 0 ? { members } : {}),
+  };
+}
+
+/** Fill group member names from host remoteMembers, then from 1:1 roster rows. */
+export function enrichRoster(agents: Agent[]): Agent[] {
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  return agents.map((agent) => {
+    const ids = agent.memberIds ?? [];
+    if (!agent.isGroup && ids.length === 0) return { ...agent };
+    const named = new Map((agent.members ?? []).map((member) => [member.id, member.name]));
+    const members: AgentMember[] = ids.map((memberId) => {
+      const fromHost = named.get(memberId);
+      const fromRoster = byId.get(memberId)?.name;
+      return { id: memberId, name: fromHost || fromRoster || memberId };
+    });
+    return {
+      ...agent,
+      memberIds: ids,
+      ...(members.length > 0 ? { members } : {}),
+    };
+  });
 }
 
 function unwrapEntry(value: unknown): unknown {
@@ -144,6 +184,7 @@ export function parseHostTranscript(payload: unknown): { turns: ChatTurn[]; next
           id: `${turn.timestampMs ?? "t"}-${index}-${turn.speaker}`,
           role,
           speaker: turn.speaker,
+          ...(turn.agentId ? { speakerId: turn.agentId } : {}),
           text: turn.text,
           ...(turn.timestampMs != null ? { timestampMs: turn.timestampMs } : {}),
           ...(images.length > 0 ? { images } : {}),
@@ -155,10 +196,17 @@ export function parseHostTranscript(payload: unknown): { turns: ChatTurn[]; next
     const speaker =
       rec.role === "user" || rec.kind === "user-attachment" ? "user" : typeof rec.kind === "string" ? rec.kind : "assistant";
     const timestampMs = typeof rec.timestampMs === "number" ? rec.timestampMs : undefined;
+    const authorId =
+      isRecord(rec.author) && typeof rec.author.id === "string"
+        ? rec.author.id
+        : isRecord(rec.fromAgent) && typeof rec.fromAgent.id === "string"
+          ? rec.fromAgent.id
+          : undefined;
     turns.push({
       id: `${timestampMs ?? "t"}-${index}-${speaker}`,
       role: roleFromEntry(rec, speaker),
       speaker,
+      ...(authorId ? { speakerId: authorId } : {}),
       text: "",
       ...(timestampMs != null ? { timestampMs } : {}),
       images,

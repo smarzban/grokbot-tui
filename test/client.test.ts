@@ -1,10 +1,11 @@
+import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSdkBot, GatewayHostClient } from "../src/client/host.js";
-import { MockHostClient } from "../src/client/mock.js";
+import { CHIEF_ID, DEV_ID, MockHostClient, PROJECT_X_ID } from "../src/client/mock.js";
 import { openHostClient } from "../src/client/factory.js";
 import { HostClientError } from "../src/client/types.js";
-import { turnsFromHostTranscript } from "../src/client/transcript.js";
+import { asAgentRow, enrichRoster, turnsFromHostTranscript } from "../src/client/transcript.js";
 import { transcriptChanged } from "../src/tui/poll.js";
 import { readConfig } from "../src/config.js";
 import { redact } from "../src/redact.js";
@@ -44,10 +45,19 @@ test("mock host getTranscript picks up an appended app-side turn", async () => {
 test("mock host lists agents by name and id", async () => {
   const mock = new MockHostClient();
   const agents = await mock.listAgents();
-  assert.equal(agents.length, 2);
-  assert.equal(agents[0]?.name, "Ada");
-  assert.ok(agents[0]?.id);
-  assert.equal(agents.every((agent) => agent.isGroup === false), true);
+  const bots = agents.filter((agent) => !agent.isGroup);
+  const rooms = agents.filter((agent) => agent.isGroup);
+  assert.ok(bots.length >= 2);
+  assert.equal(bots[0]?.name, "Ada");
+  assert.ok(bots[0]?.id);
+  assert.equal(rooms.length, 1);
+  assert.equal(rooms[0]?.name, "project X");
+  assert.equal(rooms[0]?.id, PROJECT_X_ID);
+  assert.deepEqual(rooms[0]?.memberIds, [DEV_ID, CHIEF_ID]);
+  assert.deepEqual(
+    rooms[0]?.members?.map((member) => member.name),
+    ["Dev", "Chief of Staff"],
+  );
 });
 
 test("mock host sendPrompt waits until a reply", async () => {
@@ -79,6 +89,57 @@ test("mock host cancels an in-flight wait", async () => {
   assert.equal(result.status, "cancelled");
 });
 
+test("mock room send does not wait; poll sees member speaker names", async () => {
+  const mock = new MockHostClient({ replyDelayMs: 15 });
+  const room = (await mock.listAgents()).find((agent) => agent.isGroup);
+  assert.ok(room);
+  const result = await mock.sendPrompt({
+    agentId: room.id,
+    prompt: "@Dev ship it",
+    wait: false,
+  });
+  assert.equal(result.accepted, true);
+  assert.equal(result.status, "idle");
+  const immediately = await mock.getTranscript(room.id);
+  assert.equal(immediately.at(0)?.role, "user");
+  assert.equal(immediately.at(0)?.text, "@Dev ship it");
+  assert.equal(
+    immediately.some((turn) => turn.role === "assistant"),
+    false,
+  );
+  await delay(40);
+  const later = await mock.getTranscript(room.id);
+  const members = later.filter((turn) => turn.role === "assistant");
+  assert.equal(members.length, 2);
+  assert.deepEqual(
+    members.map((turn) => turn.speaker).sort(),
+    ["Chief of Staff", "Dev"],
+  );
+  assert.ok(members.every((turn) => turn.speaker !== "project X"));
+});
+
+test("asAgentRow keeps group memberIds and enrichRoster fills names from the bot roster", () => {
+  const row = asAgentRow({
+    id: PROJECT_X_ID,
+    name: "project X",
+    isGroup: true,
+    memberIds: [DEV_ID, CHIEF_ID],
+  });
+  assert.ok(row);
+  assert.equal(row.isGroup, true);
+  assert.deepEqual(row.memberIds, [DEV_ID, CHIEF_ID]);
+  const roster = enrichRoster([
+    { id: DEV_ID, name: "Dev", isGroup: false },
+    { id: CHIEF_ID, name: "Chief of Staff", isGroup: false },
+    row,
+  ]);
+  const room = roster.find((agent) => agent.isGroup);
+  assert.deepEqual(
+    room?.members?.map((member) => member.name),
+    ["Dev", "Chief of Staff"],
+  );
+});
+
 test("mock host-down and missing-auth", async () => {
   const down = new MockHostClient({ hostDown: true });
   await assert.rejects(() => down.health(), (err: unknown) => {
@@ -105,6 +166,33 @@ test("gateway client lists agents through a mock host", async () => {
   assert.equal(agents.length, 1);
   assert.equal(agents[0]?.name, ADA_NAME);
   assert.equal(agents[0]?.id, ADA_ID);
+});
+
+test("gateway client includes groups and resolves member names from the bot roster", async () => {
+  const host = createScriptedHost({
+    agents: [
+      { id: ADA_ID, name: ADA_NAME, isGroup: false },
+      { id: DEV_ID, name: "Dev", isGroup: false },
+      { id: CHIEF_ID, name: "Chief of Staff", isGroup: false },
+      { id: PROJECT_X_ID, name: "project X", isGroup: true, memberIds: [DEV_ID, CHIEF_ID] },
+    ],
+    transcripts: new Map([
+      [ADA_ID, []],
+      [DEV_ID, []],
+      [CHIEF_ID, []],
+      [PROJECT_X_ID, []],
+    ]),
+  });
+  const client = clientFor(host);
+  const agents = await client.listAgents();
+  const room = agents.find((agent) => agent.isGroup);
+  assert.ok(room);
+  assert.equal(room.name, "project X");
+  assert.deepEqual(room.memberIds, [DEV_ID, CHIEF_ID]);
+  assert.deepEqual(
+    room.members?.map((member) => member.name),
+    ["Dev", "Chief of Staff"],
+  );
 });
 
 test("gateway client sendPrompt polls until idle and returns the last reply", async () => {
@@ -186,6 +274,23 @@ test("transcript parser reads host message and send-message rows", () => {
   assert.equal(turns.length, 2);
   assert.equal(turns[0]?.role, "user");
   assert.equal(turns[1]?.text, "hello from Ada");
+});
+
+test("transcript parser keeps group send-message author id and name", () => {
+  const turns = turnsFromHostTranscript({
+    entries: [
+      {
+        kind: "send-message",
+        author: { id: DEV_ID, name: "Dev" },
+        message: { type: "text", content: "from the room" },
+        timestampMs: 2,
+      },
+    ],
+  });
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0]?.speaker, "Dev");
+  assert.equal(turns[0]?.speakerId, DEV_ID);
+  assert.equal(turns[0]?.text, "from the room");
 });
 
 test("transcript parser keeps user-attachment and send-message attachment", () => {

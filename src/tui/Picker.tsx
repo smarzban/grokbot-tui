@@ -2,6 +2,7 @@ import { Box, Text, useApp, useInput, useWindowSize } from "ink";
 import { useState } from "react";
 import type { Agent } from "../client/types.js";
 import { agentLabel, innerWidth } from "./layout.js";
+import { pickerItems, pickerRows, visiblePickerRows } from "./roster.js";
 
 type Props = {
   agents: Agent[];
@@ -24,6 +25,8 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
   const listHeight = Math.max(3, height - 6);
   const innerList = Math.max(1, listHeight - 2);
   const inner = innerWidth(width);
+  const items = pickerItems(agents);
+  const allRows = pickerRows(agents);
 
   useInput((input, key) => {
     if (input === "q" || key.escape) {
@@ -38,31 +41,30 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
       onRefresh();
       return;
     }
-    if (agents.length === 0) return;
+    if (items.length === 0) return;
     if (key.upArrow || input === "k" || (key.ctrl && input === "p")) {
-      setIndex((current) => (current <= 0 ? agents.length - 1 : current - 1));
+      setIndex((current) => (current <= 0 ? items.length - 1 : current - 1));
       return;
     }
     if (key.downArrow || input === "j" || (key.ctrl && input === "n")) {
-      setIndex((current) => (current >= agents.length - 1 ? 0 : current + 1));
+      setIndex((current) => (current >= items.length - 1 ? 0 : current + 1));
       return;
     }
     if (key.return || input === "\r" || input === "\n") {
-      const agent = agents[index];
+      const agent = items[Math.min(index, items.length - 1)];
       if (agent) onSelect(agent);
     }
   });
 
-  const safeIndex = agents.length === 0 ? 0 : Math.min(index, agents.length - 1);
-  const maxStart = Math.max(0, agents.length - innerList);
-  const start = Math.min(Math.max(0, safeIndex - innerList + 1), maxStart);
-  const visible = agents.slice(start, start + innerList);
+  const safeIndex = items.length === 0 ? 0 : Math.min(index, items.length - 1);
+  const selected = items[safeIndex];
+  const visible = visiblePickerRows(allRows, selected?.id, innerList);
 
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
       <Box borderStyle="single" borderColor="cyan" paddingX={1} height={3} overflow="hidden">
         <Text bold color="cyan">
-          Pick a bot
+          Pick a bot or room
         </Text>
       </Box>
       <Box
@@ -73,16 +75,24 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
         height={listHeight}
         overflow="hidden"
       >
-        {agents.length === 0 ? (
-          <Text color="yellow">No agents on this host. Create one in the Grok Bot app, then press r.</Text>
+        {items.length === 0 ? (
+          <Text color="yellow">No bots or rooms on this host. Create one in the Grok Bot app, then press r.</Text>
         ) : (
-          visible.map((agent) => {
-            const selected = agent.id === agents[safeIndex]?.id;
-            const name = agentLabel(agent, agents).slice(0, Math.max(1, inner - 2));
+          visible.map((row) => {
+            if (row.kind === "heading") {
+              return (
+                <Text key={`h-${row.title}`} dimColor>
+                  {row.title}
+                </Text>
+              );
+            }
+            const isSelected = row.agent.id === selected?.id;
+            const name = agentLabel(row.agent, agents).slice(0, Math.max(1, inner - 8));
             return (
-              <Text key={agent.id} inverse={selected}>
-                {selected ? "› " : "  "}
+              <Text key={row.agent.id} inverse={isSelected}>
+                {isSelected ? "› " : "  "}
                 {name}
+                {row.agent.isGroup ? <Text dimColor>  room</Text> : null}
               </Text>
             );
           })

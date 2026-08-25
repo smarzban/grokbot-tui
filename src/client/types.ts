@@ -1,11 +1,20 @@
 export type HostSource = "gateway" | "desktop" | "mock";
 
+export type AgentMember = {
+  id: string;
+  name: string;
+};
+
 export type Agent = {
   id: string;
   name: string;
   title?: string;
   isGroup: boolean;
   isRunning?: boolean;
+  /** Host `memberIds` / `memberAgentIds`. Empty for 1:1 bots. */
+  memberIds?: string[];
+  /** Names from host `remoteMembers` or resolved against the bot roster. */
+  members?: AgentMember[];
 };
 
 export const DEFAULT_TRANSCRIPT_LIMIT = 500;
@@ -24,6 +33,8 @@ export type ChatTurn = {
   id: string;
   role: "user" | "assistant" | "system";
   speaker: string;
+  /** Host author / fromAgent id when the transcript row carried one. */
+  speakerId?: string;
   text: string;
   timestampMs?: number;
   images?: ChatImage[];

@@ -20,11 +20,13 @@ import {
   scrollDeltaForButton,
   WHEEL_LINE_DELTA,
 } from "./mouse.js";
+import { memberListLabel } from "./roster.js";
 import { DEFAULT_POLL_MS, shouldPollTranscript, transcriptChanged } from "./poll.js";
 
 type Props = {
   client: HostClient;
   agent: Agent;
+  roster?: Agent[];
   timeoutMs?: number;
   pollMs?: number;
   onSwitch: () => void;
@@ -37,12 +39,12 @@ type Status =
   | { kind: "awaiting-user" }
   | { kind: "error"; message: string };
 
-function headerStatus(status: Status): string {
+function headerStatus(status: Status, isGroup = false): string {
   switch (status.kind) {
     case "loading":
       return "loading";
     case "sending":
-      return "waiting";
+      return isGroup ? "sent" : "waiting";
     case "awaiting-user":
       return "your turn";
     case "error":
@@ -59,7 +61,14 @@ function termSize(columns: number, rows: number): { width: number; height: numbe
   };
 }
 
-export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwitch }: Props) {
+export function Chat({
+  client,
+  agent,
+  roster = [],
+  timeoutMs,
+  pollMs = DEFAULT_POLL_MS,
+  onSwitch,
+}: Props) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const { columns, rows } = useWindowSize();
@@ -74,14 +83,25 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
   statusRef.current = status;
   const agentId = agent.id;
   const displayName = agent.name.trim() || "agent";
+  const isGroup = agent.isGroup === true;
+  const labelCtx = useMemo(
+    () => ({
+      agentName: displayName,
+      isGroup,
+      members: agent.members,
+      roster,
+    }),
+    [agent.members, displayName, isGroup, roster],
+  );
+  const headerMembers = memberListLabel(agent, roster);
 
   const { width, height } = termSize(columns, rows);
   const inner = innerWidth(width);
   const transcriptH = Math.max(3, height - chromeRows());
   const lineBudget = Math.max(1, transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0));
   const allRows = useMemo(
-    () => turnsToRows(turns, inner, displayName),
-    [turns, inner, displayName],
+    () => turnsToRows(turns, inner, labelCtx),
+    [turns, inner, labelCtx],
   );
   const rowCount = allRows.length;
   const prevRowCountRef = useRef(rowCount);
@@ -172,7 +192,7 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
         const result = await client.sendPrompt({
           agentId,
           prompt,
-          wait: true,
+          wait: !isGroup,
           timeoutMs,
           signal: controller.signal,
         });
@@ -196,7 +216,9 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
           ]);
         }
         setScrollOffset(0);
-        if (result.status === "awaiting-user") {
+        if (isGroup) {
+          setStatus({ kind: "idle" });
+        } else if (result.status === "awaiting-user") {
           setStatus({ kind: "awaiting-user" });
         } else if (result.status === "timeout") {
           setStatus({ kind: "error", message: "Timed out waiting for a reply. Esc cancels; try again." });
@@ -212,7 +234,7 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
         abortRef.current = null;
       }
     },
-    [agent.name, agentId, client, timeoutMs],
+    [agent.name, agentId, client, isGroup, timeoutMs],
   );
 
   const page = Math.max(1, Math.floor(lineBudget / 2));
@@ -307,10 +329,18 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
         overflow="hidden"
         justifyContent="space-between"
       >
-        <Text bold color="cyan">
-          {displayName}
+        <Text wrap="truncate">
+          <Text bold color="cyan">
+            {displayName}
+          </Text>
+          {headerMembers ? (
+            <Text dimColor>
+              {"  "}
+              {headerMembers}
+            </Text>
+          ) : null}
         </Text>
-        <Text dimColor>{headerStatus(status)}</Text>
+        <Text dimColor>{headerStatus(status, isGroup)}</Text>
       </Box>
 
       <Box
@@ -376,7 +406,7 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
         <Text dimColor>
           {busy
             ? "wheel/PgUp/Dn scroll  ·  Esc cancel  ·  Ctrl+c quit"
-            : "wheel/PgUp/Dn scroll  ·  Enter send  ·  Esc bots  ·  Ctrl+c quit"}
+            : "wheel/PgUp/Dn scroll  ·  Enter send  ·  Esc list  ·  Ctrl+c quit"}
         </Text>
       </Box>
     </Box>

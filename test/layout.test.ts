@@ -5,6 +5,7 @@ import {
   adjustScrollOffset,
   agentLabel,
   composeVisible,
+  speakerLabel,
   takeLastRows,
   transcriptInnerHeight,
   turnsToRows,
@@ -228,4 +229,30 @@ test("image turns render a placeholder; text-only turns do not", () => {
     textOnly.some((row) => row.kind === "image"),
     false,
   );
+});
+
+test("room turns are labeled with member names, not the room title", () => {
+  const ctx = {
+    agentName: "project X",
+    isGroup: true,
+    members: [
+      { id: "dev-id", name: "Dev" },
+      { id: "chief-id", name: "Chief of Staff" },
+    ],
+  };
+  const turns: ChatTurn[] = [
+    { id: "u", role: "user", speaker: "you", text: "@Dev ship it" },
+    { id: "d", role: "assistant", speaker: "send-message", speakerId: "dev-id", text: "on it" },
+    { id: "c", role: "assistant", speaker: "Chief of Staff", speakerId: "chief-id", text: "tracking" },
+  ];
+  const rows = turnsToRows(turns, 40, ctx);
+  const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text.trim());
+  assert.deepEqual(speakers, ["you", "Dev", "Chief of Staff"]);
+  assert.equal(
+    rows.some((row) => row.kind === "speaker" && row.text.includes("project X")),
+    false,
+  );
+  assert.equal(speakerLabel(turns[1]!, ctx), "Dev");
+  assert.equal(speakerLabel(turns[2]!, ctx), "Chief of Staff");
+  assert.equal(speakerLabel(turns[0]!, ctx), "you");
 });

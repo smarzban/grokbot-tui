@@ -11,17 +11,17 @@ Command names and response shapes come from those libraries / the live host. The
 
 ## What v1 does
 
-- Lists your bots by name (a short id prefix only if two names collide)
-- Opens a framed chat: agent name + idle/waiting in the header, clipped transcript, compose bar at the bottom
-- Sends a message, then **polls until the bot is idle** and shows the last reply (the host does not stream tokens)
+- Lists your bots and rooms by name (a short id prefix only if two names collide)
+- Opens a framed chat: agent or room name (rooms also show members), idle/waiting in the header, clipped transcript, compose bar at the bottom
+- Sends a message. 1:1 chats **poll until the bot is idle** and show the last reply; rooms send on the group id and let idle poll pick up each member’s turn
 - While idle, refreshes the transcript so messages sent from the Grok Bot app show up without sending from the TUI
 - PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
 - Images from the host (`user-attachment` / SendMessage `attachment`) show as `[image] filename` on the correct side
-- Switch bots without quitting
+- Switch bots or rooms without quitting
 - Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
 - Uses the terminal alternate screen so the transcript stays framed instead of spilling into scrollback
 
-Out of scope: groups/rooms, streaming, creating or deleting agents, Slack, avatars, rich markdown. Inline Kitty graphics are not used; image turns use a placeholder so layout stays stable.
+Out of scope: creating or deleting rooms, seating members, streaming, creating or deleting agents, Slack, avatars, rich markdown. Inline Kitty graphics are not used; image turns use a placeholder so layout stays stable. `@Name` in a room compose box is ordinary text (same as the Grok Bot app).
 
 ## Install
 
@@ -52,7 +52,7 @@ npm start -- --mock
 # or: npm run start:mock
 ```
 
-Other flags: `--agent NAME` (skip the picker if that bot exists), `--help`.
+Other flags: `--agent NAME` (skip the picker if that bot or room exists), `--help`.
 
 | Key | Where | Action |
 | --- | --- | --- |
@@ -61,7 +61,7 @@ Other flags: `--agent NAME` (skip the picker if that bot exists), `--help`.
 | Home / End | chat | Jump to oldest / latest |
 | Enter | chat | Send |
 | Esc | chat | Cancel wait, or back to the picker |
-| Ctrl+b | chat | Switch bot |
+| Ctrl+b | chat | Switch bot / room |
 | r | picker / error | Retry / refresh |
 | q | picker / error | Quit |
 | Ctrl+c | anywhere | Quit |

@@ -1,4 +1,4 @@
-import type { ChatImage, ChatTurn } from "../client/types.js";
+import type { AgentMember, ChatImage, ChatTurn } from "../client/types.js";
 
 export type TranscriptAlign = "start" | "end";
 
@@ -93,9 +93,44 @@ export function isVisibleChatTurn(turn: ChatTurn): boolean {
   return true;
 }
 
-export function speakerLabel(turn: ChatTurn, agentName: string): string {
+export type SpeakerContext = {
+  agentName: string;
+  isGroup?: boolean;
+  members?: AgentMember[];
+  roster?: Array<{ id: string; name: string }>;
+};
+
+function asSpeakerContext(agentNameOrCtx: string | SpeakerContext): SpeakerContext {
+  return typeof agentNameOrCtx === "string" ? { agentName: agentNameOrCtx } : agentNameOrCtx;
+}
+
+function lookupMemberName(idOrName: string, ctx: SpeakerContext): string | undefined {
+  const needle = idOrName.trim().toLowerCase();
+  if (!needle) return undefined;
+  const pools = [...(ctx.members ?? []), ...(ctx.roster ?? [])];
+  const byId = pools.find((row) => row.id.toLowerCase() === needle);
+  if (byId?.name.trim()) return byId.name.trim();
+  const byName = pools.find((row) => row.name.trim().toLowerCase() === needle);
+  if (byName?.name.trim()) return byName.name.trim();
+  return undefined;
+}
+
+/** 1:1 chats use the selected bot name. Rooms use the member who spoke, never the room title. */
+export function speakerLabel(turn: ChatTurn, agentNameOrCtx: string | SpeakerContext): string {
   if (turn.role === "user") return "you";
-  const name = agentName.trim();
+  const ctx = asSpeakerContext(agentNameOrCtx);
+  if (ctx.isGroup) {
+    const fromId = turn.speakerId ? lookupMemberName(turn.speakerId, ctx) : undefined;
+    if (fromId) return fromId;
+    const fromSpeaker = lookupMemberName(turn.speaker, ctx);
+    if (fromSpeaker) return fromSpeaker;
+    if (isChatDeliverySpeaker(turn.speaker) || turn.speaker === "assistant" || turn.speaker === "unknown") {
+      return "bot";
+    }
+    const leftover = turn.speaker.trim();
+    return leftover.length > 0 ? leftover : "bot";
+  }
+  const name = ctx.agentName.trim();
   return name.length > 0 ? name : "bot";
 }
 
@@ -108,14 +143,19 @@ function paint(text: string, align: TranscriptAlign, paneWidth: number): string 
   return align === "end" ? alignEnd(text, paneWidth) : text;
 }
 
-export function turnsToRows(turns: ChatTurn[], width: number, agentName: string): TranscriptRow[] {
+export function turnsToRows(
+  turns: ChatTurn[],
+  width: number,
+  agentNameOrCtx: string | SpeakerContext,
+): TranscriptRow[] {
   const paneWidth = Math.max(1, width);
   const bodyWidth = wrapWidth(paneWidth);
+  const ctx = asSpeakerContext(agentNameOrCtx);
   const rows: TranscriptRow[] = [];
   for (const turn of turns) {
     if (!isVisibleChatTurn(turn)) continue;
     const align = turnAlign(turn.role);
-    const label = speakerLabel(turn, agentName);
+    const label = speakerLabel(turn, ctx);
     rows.push({
       kind: "speaker",
       text: paint(label, align, paneWidth),

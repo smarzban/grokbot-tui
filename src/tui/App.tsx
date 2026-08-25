@@ -131,6 +131,7 @@ export function App({ config, token, mock }: Props) {
     <Chat
       client={client}
       agent={screen.agent}
+      roster={agents}
       timeoutMs={config.waitTimeoutMs}
       pollMs={config.pollIntervalMs}
       onSwitch={() => setScreen({ name: "picker" })}

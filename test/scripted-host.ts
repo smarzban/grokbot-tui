@@ -8,6 +8,7 @@ export type ScriptedAgent = {
   isRunning?: boolean;
   isComposingMessage?: boolean;
   awaitingUserResponse?: unknown;
+  memberIds?: string[];
 };
 
 export type ScriptedHost = {
@@ -86,7 +87,7 @@ function summary(agent: ScriptedAgent): AgentSummary {
     isHiddenFromSidebar: false,
     origin: "user",
     isGroup: agent.isGroup === true,
-    memberIds: [],
+    memberIds: agent.memberIds ?? [],
     conversationPartnerIds: [],
   };
 }
