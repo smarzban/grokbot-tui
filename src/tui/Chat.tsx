@@ -18,8 +18,8 @@ import {
   chromeRows,
   innerWidth,
   isFullPictureRun,
-  TRANSCRIPT_PAD_BOTTOM,
   transcriptInnerHeight,
+  transcriptPadBottom,
   turnsToRows,
   visibleTranscript,
   type TranscriptRow,
@@ -205,9 +205,10 @@ export function Chat({
   const composeInner = composeInnerHeight(composeLaid.lines.length);
   const composeView = visibleComposeWindow(composeLaid.lines, composeLaid.line, composeInner);
   const transcriptH = Math.max(3, height - chromeRows(composeInner));
+  const padBottom = transcriptPadBottom(answeringLine != null);
   const lineBudget = Math.max(
     1,
-    transcriptInnerHeight(height, composeInner) -
+    transcriptInnerHeight(height, composeInner, padBottom) -
       (status.kind === "error" ? 1 : 0) -
       (answeringLine ? 1 : 0) -
       (menuOpen ? Math.min(mentionMatches.length, MAX_VISIBLE_MENTIONS) : 0),
@@ -523,7 +524,7 @@ export function Chat({
         borderStyle="round"
         borderColor="gray"
         paddingX={1}
-        paddingBottom={TRANSCRIPT_PAD_BOTTOM}
+        paddingBottom={padBottom}
         height={transcriptH}
         overflow="hidden"
       >

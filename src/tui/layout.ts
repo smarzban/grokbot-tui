@@ -397,15 +397,24 @@ export function composeVisible(draft: string, width: number): { prefix: string; 
 /** Blank row inside the transcript frame, above the bottom border. */
 export const TRANSCRIPT_PAD_BOTTOM = 1;
 
+/** No pad under a visible answering line so it sits on the transcript border. */
+export function transcriptPadBottom(answering: boolean): number {
+  return answering ? 0 : TRANSCRIPT_PAD_BOTTOM;
+}
+
 export function chromeRows(composeInner = MIN_COMPOSE_INNER): number {
   const inner = Math.max(MIN_COMPOSE_INNER, composeInner);
   // header box (3) + compose box (border 2 + inner lines) + footer (1)
   return 3 + (2 + inner) + 1;
 }
 
-export function transcriptInnerHeight(terminalRows: number, composeInner = MIN_COMPOSE_INNER): number {
+export function transcriptInnerHeight(
+  terminalRows: number,
+  composeInner = MIN_COMPOSE_INNER,
+  padBottom = TRANSCRIPT_PAD_BOTTOM,
+): number {
   const outer = Math.max(4, terminalRows - chromeRows(composeInner));
-  return Math.max(1, outer - 2 - TRANSCRIPT_PAD_BOTTOM);
+  return Math.max(1, outer - 2 - Math.max(0, padBottom));
 }
 
 export function innerWidth(terminalColumns: number, paddingX = 1): number {

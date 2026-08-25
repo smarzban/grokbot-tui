@@ -12,6 +12,7 @@ import {
   takeLastRows,
   TRANSCRIPT_PAD_BOTTOM,
   transcriptInnerHeight,
+  transcriptPadBottom,
   turnsToRows,
   visibleTranscript,
   wrapLine,
@@ -97,6 +98,12 @@ test("transcript inner height leaves room for chrome and a bottom padding row", 
   assert.ok(transcriptInnerHeight(24, 5) < transcriptInnerHeight(24, 1));
   const outer = 24 - chromeRows();
   assert.equal(transcriptInnerHeight(24), Math.max(1, outer - 2 - TRANSCRIPT_PAD_BOTTOM));
+  assert.equal(transcriptPadBottom(false), TRANSCRIPT_PAD_BOTTOM);
+  assert.equal(transcriptPadBottom(true), 0);
+  assert.equal(
+    transcriptInnerHeight(24, 1, transcriptPadBottom(true)),
+    transcriptInnerHeight(24, 1, transcriptPadBottom(false)) + TRANSCRIPT_PAD_BOTTOM,
+  );
 });
 
 test("assistant send-message turns keep the body without a 1:1 speaker label", () => {
