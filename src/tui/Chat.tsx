@@ -167,6 +167,7 @@ export function Chat({
   );
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionDismissed, setMentionDismissed] = useState(false);
+  const [pollReady, setPollReady] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -221,6 +222,7 @@ export function Chat({
   const prevRowCountRef = useRef(rowCount);
 
   const load = useCallback(async () => {
+    setPollReady(false);
     setStatus({ kind: "loading" });
     setScrollOffset(0);
     try {
@@ -230,6 +232,8 @@ export function Chat({
     } catch (err) {
       const message = err instanceof HostClientError ? err.message : errorMessage(err);
       setStatus({ kind: "error", message });
+    } finally {
+      setPollReady(true);
     }
   }, [client, agentId]);
 
@@ -272,7 +276,7 @@ export function Chat({
   }, [mentionQueryKey]);
 
   useEffect(() => {
-    if (status.kind === "loading") return;
+    if (!pollReady) return;
     let cancelled = false;
     const applyRoster = (nextRoster: Agent[]) => {
       const names = busyMemberNames(agentRef.current, nextRoster);
@@ -314,7 +318,7 @@ export function Chat({
       cancelled = true;
       clearInterval(id);
     };
-  }, [agentId, client, onRoster, pollMs, status.kind]);
+  }, [agentId, client, onRoster, pollMs, pollReady]);
 
   const send = useCallback(
     async (text: string) => {

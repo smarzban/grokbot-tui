@@ -47,6 +47,16 @@ test("mergePolledTranscript keeps uncommitted local user turns", () => {
   assert.deepEqual(mergePolledTranscript([...host, local], host), [...host, local]);
 });
 
+test("mergePolledTranscript survives an immediate stale poll after a room send", () => {
+  const beforeSend: ChatTurn[] = [{ id: "1", role: "assistant", speaker: "Dev", text: "earlier" }];
+  const optimistic: ChatTurn = { id: "local-42", role: "user", speaker: "you", text: "@Dev go" };
+  const staleTail = beforeSend;
+  assert.deepEqual(mergePolledTranscript([...beforeSend, optimistic], staleTail), [
+    ...beforeSend,
+    optimistic,
+  ]);
+});
+
 test("mergePolledTranscript drops local turns once the host commits them", () => {
   const local: ChatTurn = { id: "local-1", role: "user", speaker: "you", text: "hi" };
   const host: ChatTurn[] = [
