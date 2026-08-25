@@ -62,7 +62,12 @@ async function main(argv: string[]): Promise<void> {
     <InkPictureProvider>
       <App config={config} token={token} mock={mock} />
     </InkPictureProvider>,
-    { alternateScreen: true },
+    {
+      alternateScreen: true,
+      // Ghostty supports the Kitty keyboard protocol. Without it, Shift+Enter
+      // arrives as the same `\r` as Enter and Ink leaves `key.shift` false.
+      kittyKeyboard: { mode: "enabled" },
+    },
   );
 }
 

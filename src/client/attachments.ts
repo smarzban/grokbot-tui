@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,11 @@ const failed = new Set<string>();
 export function resetAttachmentCacheForTests(): void {
   memory.clear();
   failed.clear();
+  try {
+    rmSync(join(tmpdir(), "grok-tui-images"), { recursive: true, force: true });
+  } catch {
+    // ignore missing or busy cache dir
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -218,8 +218,16 @@ function isCommand(key: ComposeKey): boolean {
 /**
  * Compose-box keys. Mention-menu ↑↓/Enter are handled by the caller first.
  * Home/End are not handled here (they still scroll history).
+ *
+ * `input` is the Ink `useInput` string: needed for Ctrl+J and for terminals
+ * that report Shift+Enter as `"\n"` with `key.return` false.
  */
-export function handleComposeKey(key: ComposeKey, draft: Draft, width: number): ComposeCommand {
+export function handleComposeKey(
+  key: ComposeKey,
+  draft: Draft,
+  width: number,
+  input = "",
+): ComposeCommand {
   const laid = layoutCompose(draft.text, draft.caret, width);
 
   if (isCommand(key) && (key.backspace || key.delete)) {
@@ -247,13 +255,15 @@ export function handleComposeKey(key: ComposeKey, draft: Draft, width: number): 
   if (key.rightArrow && !key.ctrl && !isCommand(key)) {
     return { type: "set", draft: { text: draft.text, caret: moveCaret(draft.caret, draft.text.length, 1) } };
   }
+  const ctrlJ = Boolean(key.ctrl) && (input === "j" || input === "J" || input === "\n");
+  const lineFeedWithoutReturn = input === "\n" && !key.return;
+  if ((key.return && key.shift) || lineFeedWithoutReturn || ctrlJ) {
+    return { type: "set", draft: insertAt(draft.text, draft.caret, "\n") };
+  }
   if (key.ctrl && !key.shift && !key.leftArrow && !key.rightArrow && !key.upArrow && !key.downArrow) {
     return { type: "unhandled" };
   }
-  if (key.return && key.shift) {
-    return { type: "set", draft: insertAt(draft.text, draft.caret, "\n") };
-  }
-  if (key.return) {
+  if (key.return || input === "\r") {
     return { type: "send" };
   }
   if (key.backspace) {

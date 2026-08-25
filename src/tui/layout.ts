@@ -205,9 +205,14 @@ export function turnsToRows(
         });
       }
     }
-    rows.push({ kind: "empty", text: "", role: turn.role, align });
+    // 1:1 has no speaker labels, so two blank rows keep bubbles apart.
+    // Rooms already have names — one blank row is enough.
+    const gap = ctx.isGroup === true ? 1 : 2;
+    for (let g = 0; g < gap; g++) {
+      rows.push({ kind: "empty", text: "", role: turn.role, align });
+    }
   }
-  if (rows.length > 0 && rows[rows.length - 1]?.kind === "empty") {
+  while (rows.length > 0 && rows[rows.length - 1]?.kind === "empty") {
     rows.pop();
   }
   return rows;

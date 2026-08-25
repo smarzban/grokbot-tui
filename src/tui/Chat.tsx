@@ -451,7 +451,7 @@ export function Chat({
       setScrollOffset(0);
       return;
     }
-    const cmd = handleComposeKey(key, draftRef.current, inner);
+    const cmd = handleComposeKey(key, draftRef.current, inner, input);
     if (cmd.type === "scrollTranscript") {
       const delta = cmd.dir === "up" ? WHEEL_LINE_DELTA : -WHEEL_LINE_DELTA;
       setScrollOffset((offset) => applyScrollDelta(offset, delta, rowCount, lineBudget));

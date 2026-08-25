@@ -106,7 +106,7 @@ test("visible window keeps the caret line in view", () => {
   });
 });
 
-test("Shift+Enter inserts a newline; Enter sends", () => {
+test("Shift+Enter, LF without return, and Ctrl+J insert a newline; Enter / CR send", () => {
   const draft = { text: "hi", caret: 2 };
   const shifted = handleComposeKey({ return: true, shift: true }, draft, 40);
   assert.equal(shifted.type, "set");
@@ -114,8 +114,24 @@ test("Shift+Enter inserts a newline; Enter sends", () => {
     assert.equal(shifted.draft.text, "hi\n");
     assert.equal(shifted.draft.caret, 3);
   }
+  const lf = handleComposeKey({ return: false }, draft, 40, "\n");
+  assert.equal(lf.type, "set");
+  if (lf.type === "set") {
+    assert.equal(lf.draft.text, "hi\n");
+    assert.equal(lf.draft.caret, 3);
+  }
+  const ctrlJ = handleComposeKey({ ctrl: true }, draft, 40, "j");
+  assert.equal(ctrlJ.type, "set");
+  if (ctrlJ.type === "set") {
+    assert.equal(ctrlJ.draft.text, "hi\n");
+    assert.equal(ctrlJ.draft.caret, 3);
+  }
   const enter = handleComposeKey({ return: true, shift: false }, draft, 40);
   assert.equal(enter.type, "send");
+  const cr = handleComposeKey({}, draft, 40, "\r");
+  assert.equal(cr.type, "send");
+  const enterLf = handleComposeKey({ return: true }, draft, 40, "\n");
+  assert.equal(enterLf.type, "send");
 });
 
 test("Cmd+Delete and Cmd+Backspace clear the compose box", () => {

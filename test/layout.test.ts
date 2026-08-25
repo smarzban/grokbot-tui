@@ -229,6 +229,38 @@ test("image turns render a placeholder; text-only turns do not", () => {
   );
 });
 
+test("1:1 turns are separated by two empty rows; rooms by one; last empty is popped", () => {
+  const oneToOne = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "hi" },
+      { id: "2", role: "assistant", speaker: "Dev", text: "hello" },
+    ],
+    40,
+    "Dev",
+  );
+  assert.deepEqual(
+    oneToOne.map((row) => row.kind),
+    ["body", "empty", "empty", "body"],
+  );
+
+  const room = turnsToRows(
+    [
+      { id: "u", role: "user", speaker: "you", text: "hi" },
+      { id: "d", role: "assistant", speaker: "send-message", speakerId: "dev-id", text: "on it" },
+    ],
+    40,
+    {
+      agentName: "project X",
+      isGroup: true,
+      members: [{ id: "dev-id", name: "Dev" }],
+    },
+  );
+  assert.deepEqual(
+    room.map((row) => row.kind),
+    ["speaker", "body", "empty", "speaker", "body"],
+  );
+});
+
 test("1:1 rows have no speaker labels; rooms still do", () => {
   const oneToOne = turnsToRows(
     [

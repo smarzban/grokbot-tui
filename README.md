@@ -60,7 +60,7 @@ Other flags: `--agent NAME` (skip the picker if that bot or room exists), `--hel
 | ↑ ↓ / j k, Enter | picker | Move / open |
 | PgUp / PgDn / wheel / Home / End / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll). ↑ ↓ scroll only while the compose draft is a single line |
 | ← → / Ctrl+a / Ctrl+e | chat compose | Move the caret (Ctrl+a/e = whole draft). Cmd+← / Cmd+→ = current line. Backspace/Delete edit at the caret |
-| Shift+Enter | chat compose | Insert a newline. Enter (no Shift) sends. Cmd+Delete / Cmd+Backspace clears the draft. Long drafts wrap at word boundaries |
+| Shift+Enter / Ctrl+J | chat compose | Insert a newline. Enter (no Shift) sends. Cmd+Delete / Cmd+Backspace clears the draft. Long drafts wrap at word boundaries |
 | Tab / Enter / ↑ ↓ / Esc | chat mention menu | Complete, move, or close (does not send or leave the room). ← → move the caret and close the menu if they leave the `@token` |
 | Esc | chat | Cancel wait, or back to the picker |
 | Ctrl+b | chat | Switch bot / room |
