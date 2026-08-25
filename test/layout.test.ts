@@ -5,14 +5,18 @@ import {
   adjustScrollOffset,
   agentLabel,
   alignBlockEnd,
+  chromeRows,
   composeVisible,
+  MESSAGE_WRAP_RATIO,
   speakerLabel,
   takeLastRows,
+  TRANSCRIPT_PAD_BOTTOM,
   transcriptInnerHeight,
   turnsToRows,
   visibleTranscript,
   wrapLine,
   wrapText,
+  wrapWidth,
 } from "../src/tui/layout.ts";
 
 test("wrapLine breaks on spaces and hard-wraps long tokens", () => {
@@ -43,7 +47,7 @@ test("turnsToRows budgets a long reply by wrapped lines, not turns", () => {
   const clipped = takeLastRows(rows, 4);
   assert.equal(clipped.length, 4);
   assert.equal(clipped.some((row) => row.kind === "speaker" && row.text.trim() === "you"), false);
-  assert.equal(clipped.at(-1)?.kind, "body");
+  assert.ok(clipped.some((row) => row.kind === "body"));
 });
 
 test("takeLastRows keeps the end of a single overflowing turn", () => {
@@ -87,10 +91,12 @@ test("composeVisible shows a tail when the draft is wider than the bar", () => {
   assert.equal(shown.caret, true);
 });
 
-test("transcript inner height leaves room for chrome", () => {
+test("transcript inner height leaves room for chrome and a bottom padding row", () => {
   assert.equal(transcriptInnerHeight(24) > 10, true);
   assert.ok(transcriptInnerHeight(24) < 24);
   assert.ok(transcriptInnerHeight(24, 5) < transcriptInnerHeight(24, 1));
+  const outer = 24 - chromeRows();
+  assert.equal(transcriptInnerHeight(24), Math.max(1, outer - 2 - TRANSCRIPT_PAD_BOTTOM));
 });
 
 test("assistant send-message turns keep the body without a 1:1 speaker label", () => {
@@ -200,11 +206,30 @@ test("user text that fits the pane is a single right-hugging left-aligned line",
   assert.ok(bodies[0]?.text.startsWith(" "));
 });
 
-test("only user strings longer than the inner width wrap", () => {
-  const fits = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(40) }], 40, "Dev");
-  assert.equal(fits.filter((row) => row.kind === "body").length, 1);
-  const wraps = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(41) }], 40, "Dev");
-  assert.ok(wraps.filter((row) => row.kind === "body").length > 1);
+test("only strings longer than 80% of the pane wrap, on both sides", () => {
+  const pane = 40;
+  const col = wrapWidth(pane);
+  assert.equal(col, Math.max(1, Math.floor(pane * MESSAGE_WRAP_RATIO)));
+  const userFits = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(col) }], pane, "Dev");
+  assert.equal(userFits.filter((row) => row.kind === "body").length, 1);
+  const userWraps = turnsToRows(
+    [{ id: "1", role: "user", speaker: "you", text: "x".repeat(col + 1) }],
+    pane,
+    "Dev",
+  );
+  assert.ok(userWraps.filter((row) => row.kind === "body").length > 1);
+  const botFits = turnsToRows(
+    [{ id: "1", role: "assistant", speaker: "Dev", text: "x".repeat(col) }],
+    pane,
+    "Dev",
+  );
+  assert.equal(botFits.filter((row) => row.kind === "body").length, 1);
+  const botWraps = turnsToRows(
+    [{ id: "1", role: "assistant", speaker: "Dev", text: "x".repeat(col + 1) }],
+    pane,
+    "Dev",
+  );
+  assert.ok(botWraps.filter((row) => row.kind === "body").length > 1);
 });
 
 test("visibleTranscript offset 0 sticks to the bottom", () => {
@@ -280,7 +305,7 @@ test("layout has no bubble chrome on turns; 1:1 uses two empties, rooms one", ()
   );
   assert.deepEqual(
     oneToOne.map((row) => row.kind),
-    ["body", "empty", "empty", "body"],
+    ["body", "empty", "empty", "body", "empty"],
   );
 
   const room = turnsToRows(
@@ -297,8 +322,54 @@ test("layout has no bubble chrome on turns; 1:1 uses two empties, rooms one", ()
   );
   assert.deepEqual(
     room.map((row) => row.kind),
-    ["speaker", "body", "empty", "speaker", "body"],
+    ["speaker", "body", "empty", "speaker", "body", "empty"],
   );
+});
+
+test("long user and assistant lines wrap at 80% of the pane; short user still right-hugs", () => {
+  const pane = 40;
+  const col = wrapWidth(pane);
+  assert.equal(col, 32);
+  const long = "y".repeat(col + 8);
+  const rows = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: long },
+      { id: "2", role: "assistant", speaker: "Dev", text: long },
+    ],
+    pane,
+    "Dev",
+  );
+  const userBodies = rows.filter((row) => row.kind === "body" && row.align === "end");
+  const botBodies = rows.filter((row) => row.kind === "body" && row.align === "start");
+  assert.ok(userBodies.length > 1);
+  assert.ok(botBodies.length > 1);
+  assert.ok(userBodies.every((row) => row.text.trimStart().length <= col));
+  assert.ok(botBodies.every((row) => row.text.length <= col));
+  assert.ok(
+    userBodies.some((row) => row.text.length === pane && row.text.trimStart().length === col),
+    "longest user line is the 80% column, padded so it sits on the right",
+  );
+  assert.ok(botBodies.some((row) => row.text.length === col));
+  assert.equal(firstContentCol(botBodies[0]?.text ?? "x"), 0);
+
+  const short = turnsToRows([{ id: "s", role: "user", speaker: "you", text: "hi" }], pane, "Dev");
+  const hi = short.find((row) => row.kind === "body");
+  assert.ok(hi);
+  assert.equal(hi.text.length, pane);
+  assert.equal(firstContentCol(hi.text), pane - 2);
+});
+
+test("last empty padding row exists under the last turn", () => {
+  const rows = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "hi" },
+      { id: "2", role: "assistant", speaker: "Dev", text: "hello" },
+    ],
+    40,
+    "Dev",
+  );
+  assert.equal(rows.at(-1)?.kind, "empty");
+  assert.ok(rows.filter((row) => row.kind === "body").length >= 2);
 });
 
 test("1:1 rows have no speaker labels; rooms still do", () => {

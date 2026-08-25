@@ -24,9 +24,12 @@ export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
   return role === "user" ? "end" : "start";
 }
 
-/** Wrap to the full pane. User turns are then shifted as a block (see alignBlockEnd). */
+/** Both user and assistant wrap to this fraction of the transcript pane. */
+export const MESSAGE_WRAP_RATIO = 0.8;
+
+/** Wrap width = 80% of the pane. User turns are then shifted as a block (see alignBlockEnd). */
 export function wrapWidth(paneWidth: number): number {
-  return Math.max(1, paneWidth);
+  return Math.max(1, Math.floor(Math.max(0, paneWidth) * MESSAGE_WRAP_RATIO));
 }
 
 /** @deprecated Use wrapWidth. Kept so older tests that imported the 55% helper still typecheck if any remain. */
@@ -234,7 +237,9 @@ export function turnsToRows(
       rows.push({ kind: "empty", text: "", role: turn.role, align });
     }
   }
-  while (rows.length > 0 && rows[rows.length - 1]?.kind === "empty") {
+  // Leave one empty row under the last line so it does not sit on the
+  // transcript frame. Collapse extra trailing blanks from the last gap.
+  while (rows.length > 1 && rows[rows.length - 1]?.kind === "empty" && rows[rows.length - 2]?.kind === "empty") {
     rows.pop();
   }
   return rows;
@@ -387,6 +392,9 @@ export function composeVisible(draft: string, width: number): { prefix: string; 
   return { prefix: draft.slice(draft.length - max), caret: true };
 }
 
+/** Blank row inside the transcript frame, above the bottom border. */
+export const TRANSCRIPT_PAD_BOTTOM = 1;
+
 export function chromeRows(composeInner = MIN_COMPOSE_INNER): number {
   const inner = Math.max(MIN_COMPOSE_INNER, composeInner);
   // header box (3) + compose box (border 2 + inner lines) + footer (1)
@@ -395,7 +403,7 @@ export function chromeRows(composeInner = MIN_COMPOSE_INNER): number {
 
 export function transcriptInnerHeight(terminalRows: number, composeInner = MIN_COMPOSE_INNER): number {
   const outer = Math.max(4, terminalRows - chromeRows(composeInner));
-  return Math.max(1, outer - 2);
+  return Math.max(1, outer - 2 - TRANSCRIPT_PAD_BOTTOM);
 }
 
 export function innerWidth(terminalColumns: number, paddingX = 1): number {

@@ -18,6 +18,7 @@ import {
   chromeRows,
   innerWidth,
   isFullPictureRun,
+  TRANSCRIPT_PAD_BOTTOM,
   transcriptInnerHeight,
   turnsToRows,
   visibleTranscript,
@@ -522,6 +523,7 @@ export function Chat({
         borderStyle="round"
         borderColor="gray"
         paddingX={1}
+        paddingBottom={TRANSCRIPT_PAD_BOTTOM}
         height={transcriptH}
         overflow="hidden"
       >
