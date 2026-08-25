@@ -203,6 +203,7 @@ function renderTranscriptRows(rows: TranscriptRow[], pane: number): ReactNode[] 
     }
     if (content.length === 0) continue;
     const isUser = content[0]?.align === "end";
+    const fill = isUser ? "cyan" : "gray";
     const inner = bubbleContentWidth(content, pane);
     const outer = bubbleOuterWidth(inner, pane);
     const bubbleInner = Math.max(1, outer - BUBBLE_CHROME_X);
@@ -218,8 +219,9 @@ function renderTranscriptRows(rows: TranscriptRow[], pane: number): ReactNode[] 
           flexDirection="column"
           width={outer}
           borderStyle="round"
-          borderColor={isUser ? "cyan" : "gray"}
-          backgroundColor={isUser ? "cyan" : "gray"}
+          borderColor={fill}
+          borderBackgroundColor={fill}
+          backgroundColor={fill}
           paddingX={BUBBLE_PAD_X}
           flexShrink={0}
         >
