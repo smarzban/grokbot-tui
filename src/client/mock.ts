@@ -65,6 +65,23 @@ function defaultTranscripts(agents: Agent[]): Record<string, ChatTurn[]> {
     text: "That last turn is a filename with no bytes on disk, so it stays a placeholder.",
     timestampMs: 4,
   });
+  if (existsSync(photo)) {
+    turns.push({
+      id: "mock-path-text",
+      role: "user",
+      speaker: "you",
+      text: photo,
+      timestampMs: 5,
+    });
+    turns.push({
+      id: "mock-path-text-note",
+      role: "assistant",
+      speaker: ada.name,
+      speakerId: ada.id,
+      text: "Pasting a local image path as the message also draws the file — no host attachmentPaths required.",
+      timestampMs: 6,
+    });
+  }
   return { [ada.id]: turns };
 }
 

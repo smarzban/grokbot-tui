@@ -1,6 +1,6 @@
 import type { AgentMember, ChatImage, ChatTurn } from "../client/types.js";
 import { MIN_COMPOSE_INNER } from "./compose.js";
-import { IMAGE_CELL_ROWS, imagePlaceholder, localImagePath, pictureKey } from "./images.js";
+import { IMAGE_CELL_ROWS, imagePlaceholder, imagesFromText, localImagePath, mergeImages, pictureKey } from "./images.js";
 
 export type TranscriptAlign = "start" | "end";
 
@@ -164,8 +164,11 @@ export function turnsToRows(
       role: turn.role,
       align,
     });
-    if (turn.text.trim().length > 0) {
-      for (const line of wrapText(turn.text, bodyWidth)) {
+    const extracted = imagesFromText(turn.text);
+    const bodyText = extracted.text;
+    const images = mergeImages(turn.images ?? [], extracted.images);
+    if (bodyText.trim().length > 0) {
+      for (const line of wrapText(bodyText, bodyWidth)) {
         rows.push({
           kind: "body",
           text: paint(line, align, paneWidth),
@@ -174,7 +177,7 @@ export function turnsToRows(
         });
       }
     }
-    for (const [index, image] of (turn.images ?? []).entries()) {
+    for (const [index, image] of images.entries()) {
       const file = localImagePath(image);
       if (file) {
         const id = pictureKey(turn.id, index);

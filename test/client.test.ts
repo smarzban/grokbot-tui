@@ -50,6 +50,7 @@ test("mock Ada transcript includes a real photo path and a name-only placeholder
   const history = await mock.getTranscript(ada.id);
   const photo = mockPhotoPath();
   assert.ok(history.some((turn) => turn.images?.some((image) => image.path === photo)));
+  assert.ok(history.some((turn) => turn.text === photo && (turn.images?.length ?? 0) === 0));
   assert.ok(history.some((turn) => turn.images?.some((image) => image.alt === "name-only.png" && !image.path)));
 });
 
