@@ -31,8 +31,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://origin.cursor.com/git/smarzban/tmp-07d786a67e747d7d"
+    "url": "git+https://github.com/smarzban/grokbot-tui.git"
   },
+  "bugs": {
+    "url": "https://github.com/smarzban/grokbot-tui/issues"
+  },
+  "homepage": "https://github.com/smarzban/grokbot-tui#readme",
   "dependencies": {
     "dotenv": "^17.4.2",
     "ink": "^7.1.1",
