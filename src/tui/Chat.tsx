@@ -6,9 +6,11 @@ import { errorMessage } from "../redact.js";
 import {
   chromeRows,
   composeVisible,
+  groupTranscriptRows,
   innerWidth,
   transcriptInnerHeight,
   turnsToRows,
+  userColumnWidth,
   visibleTranscript,
 } from "./layout.js";
 
@@ -187,11 +189,16 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
   const inner = innerWidth(width);
   const transcriptH = Math.max(3, height - chromeRows());
   const lineBudget = Math.max(1, transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0));
-  const allRows = useMemo(() => turnsToRows(turns, Math.max(8, inner - 2)), [turns, inner]);
+  const allRows = useMemo(
+    () => turnsToRows(turns, Math.max(8, inner - 2), displayName),
+    [turns, inner, displayName],
+  );
   const view = useMemo(() => visibleTranscript(allRows, lineBudget), [allRows, lineBudget]);
+  const blocks = useMemo(() => groupTranscriptRows(view.rows), [view.rows]);
   const composed = composeVisible(draft, inner);
   const canType = status.kind !== "sending" && status.kind !== "loading";
   const busy = status.kind === "sending";
+  const userWidth = userColumnWidth(Math.max(8, inner - 2));
 
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
@@ -225,21 +232,33 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
         ) : (
           <>
             {view.clipped ? <Text dimColor>···</Text> : null}
-            {view.rows.map((row, i) => {
-              if (row.kind === "empty") {
-                return <Text key={`e-${i}`}> </Text>;
-              }
-              const color = row.role === "user" ? "cyan" : row.kind === "speaker" ? "green" : "white";
-              const text = row.kind === "body" ? `  ${row.text}` : row.text;
+            {blocks.map((block, i) => {
+              const isUser = block.align === "end";
               return (
-                <Text
-                  key={`${row.kind}-${i}-${row.text.slice(0, 16)}`}
-                  bold={row.kind === "speaker"}
-                  color={color}
-                  wrap="truncate"
-                >
-                  {text}
-                </Text>
+                <Box key={`b-${i}`} flexDirection="column" width="100%">
+                  {i > 0 ? <Text> </Text> : null}
+                  <Box
+                    flexDirection="column"
+                    width="100%"
+                    alignItems={isUser ? "flex-end" : "flex-start"}
+                  >
+                    <Box flexDirection="column" width={isUser ? userWidth : undefined}>
+                      {block.rows.map((row, j) => {
+                        const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : "white";
+                        return (
+                          <Text
+                            key={`${row.kind}-${j}-${row.text.slice(0, 16)}`}
+                            bold={row.kind === "speaker"}
+                            color={color}
+                            wrap="truncate"
+                          >
+                            {row.text}
+                          </Text>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                </Box>
               );
             })}
           </>

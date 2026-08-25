@@ -32,7 +32,7 @@ test("turnsToRows budgets a long reply by wrapped lines, not turns", () => {
       text: "one two three four five six seven eight nine ten",
     },
   ];
-  const rows = turnsToRows(turns, 12);
+  const rows = turnsToRows(turns, 12, "Dev");
   const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text);
   assert.deepEqual(speakers, ["you", "Dev"]);
   const body = rows.filter((row) => row.kind === "body");
@@ -47,7 +47,7 @@ test("takeLastRows keeps the end of a single overflowing turn", () => {
   const turns: ChatTurn[] = [
     { id: "1", role: "assistant", speaker: "Dev", text: "alpha beta gamma delta epsilon" },
   ];
-  const rows = turnsToRows(turns, 6);
+  const rows = turnsToRows(turns, 6, "Dev");
   const clipped = takeLastRows(rows, 3);
   assert.equal(clipped.length, 3);
   assert.equal(clipped[0]?.kind === "speaker", false);
@@ -58,7 +58,7 @@ test("visibleTranscript reserves a line when clipping a long last reply", () => 
     { id: "1", role: "user", speaker: "you", text: "hi" },
     { id: "2", role: "assistant", speaker: "Dev", text: "one two three four five six seven eight nine ten" },
   ];
-  const rows = turnsToRows(turns, 12);
+  const rows = turnsToRows(turns, 12, "Dev");
   const view = visibleTranscript(rows, 4);
   assert.equal(view.clipped, true);
   assert.equal(view.rows.length, 3);
@@ -87,4 +87,45 @@ test("composeVisible shows a tail when the draft is wider than the bar", () => {
 test("transcript inner height leaves room for chrome", () => {
   assert.equal(transcriptInnerHeight(24) > 10, true);
   assert.ok(transcriptInnerHeight(24) < 24);
+});
+
+test("assistant send-message turns are labeled with the agent name", () => {
+  const turns: ChatTurn[] = [
+    { id: "1", role: "assistant", speaker: "send-message", text: "hello from the bot" },
+  ];
+  const rows = turnsToRows(turns, 40, "Dev");
+  const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text);
+  assert.deepEqual(speakers, ["Dev"]);
+  assert.equal(
+    rows.some((row) => /send-message|SendMessage|thinking/i.test(row.text)),
+    false,
+  );
+  assert.ok(rows.some((row) => row.kind === "body" && row.text.includes("hello from the bot")));
+});
+
+test("user rows align end and assistant rows align start", () => {
+  const turns: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "hi there" },
+    { id: "2", role: "assistant", speaker: "send-message", text: "hello" },
+  ];
+  const rows = turnsToRows(turns, 20, "Dev");
+  const user = rows.filter((row) => row.role === "user" && row.kind !== "empty");
+  const bot = rows.filter((row) => row.role === "assistant" && row.kind !== "empty");
+  assert.ok(user.length > 0 && user.every((row) => row.align === "end"));
+  assert.ok(bot.length > 0 && bot.every((row) => row.align === "start"));
+  assert.equal(bot.find((row) => row.kind === "speaker")?.text, "Dev");
+  assert.equal(user.find((row) => row.kind === "speaker")?.text, "you");
+});
+
+test("empty thinking turns are skipped but send-message bodies are kept", () => {
+  const turns: ChatTurn[] = [
+    { id: "1", role: "assistant", speaker: "thinking", text: "" },
+    { id: "2", role: "assistant", speaker: "send-message", text: "visible reply" },
+  ];
+  const rows = turnsToRows(turns, 40, "Dev");
+  assert.equal(
+    rows.some((row) => row.kind === "speaker" && row.text === "thinking"),
+    false,
+  );
+  assert.ok(rows.some((row) => row.kind === "body" && row.text === "visible reply"));
 });

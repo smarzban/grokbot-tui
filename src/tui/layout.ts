@@ -1,10 +1,28 @@
 import type { ChatTurn } from "../client/types.js";
 
+export type TranscriptAlign = "start" | "end";
+
 export type TranscriptRow = {
   kind: "speaker" | "body" | "empty";
   text: string;
   role?: ChatTurn["role"];
+  align: TranscriptAlign;
 };
+
+export type TranscriptBlock = {
+  align: TranscriptAlign;
+  role?: ChatTurn["role"];
+  rows: TranscriptRow[];
+};
+
+export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
+  return role === "user" ? "end" : "start";
+}
+
+/** Right-side column for user bubbles; assistant uses the full inner width. */
+export function userColumnWidth(width: number): number {
+  return Math.max(8, Math.floor(width * 0.72));
+}
 
 /** Word-wrap a single paragraph; hard-break tokens longer than width. */
 export function wrapLine(line: string, width: number): string[] {
@@ -37,26 +55,83 @@ export function wrapText(text: string, width: number): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
-export function speakerLabel(turn: ChatTurn): string {
-  if (turn.role === "user") return "you";
-  const name = turn.speaker.trim();
-  return name.length > 0 && name !== "assistant" ? name : "bot";
+function normalizeSpeaker(speaker: string): string {
+  return speaker.trim().toLowerCase().replace(/_/g, "-");
 }
 
-export function turnsToRows(turns: ChatTurn[], width: number): TranscriptRow[] {
-  const bodyWidth = Math.max(1, width);
+function isChatDeliverySpeaker(speaker: string): boolean {
+  const n = normalizeSpeaker(speaker);
+  return n === "send-message" || n === "sendmessage";
+}
+
+/** Tool rows such as `thinking` — not the visible SendMessage chat. */
+function isNonChatToolSpeaker(speaker: string): boolean {
+  const n = normalizeSpeaker(speaker);
+  if (!n || isChatDeliverySpeaker(speaker)) return false;
+  if (n === "user" || n === "you" || n === "assistant" || n === "bot" || n === "system" || n === "agent") {
+    return false;
+  }
+  return n === "thinking" || n.includes("-");
+}
+
+export function isVisibleChatTurn(turn: ChatTurn): boolean {
+  if (turn.role === "user") return true;
+  if (isNonChatToolSpeaker(turn.speaker) && turn.text.trim().length === 0) return false;
+  return true;
+}
+
+export function speakerLabel(turn: ChatTurn, agentName: string): string {
+  if (turn.role === "user") return "you";
+  const name = agentName.trim();
+  return name.length > 0 ? name : "bot";
+}
+
+export function turnsToRows(turns: ChatTurn[], width: number, agentName: string): TranscriptRow[] {
+  const assistantWidth = Math.max(1, width);
+  const userWidth = userColumnWidth(width);
   const rows: TranscriptRow[] = [];
   for (const turn of turns) {
-    rows.push({ kind: "speaker", text: speakerLabel(turn), role: turn.role });
+    if (!isVisibleChatTurn(turn)) continue;
+    const align = turnAlign(turn.role);
+    const bodyWidth = align === "end" ? userWidth : assistantWidth;
+    rows.push({ kind: "speaker", text: speakerLabel(turn, agentName), role: turn.role, align });
     for (const line of wrapText(turn.text, bodyWidth)) {
-      rows.push({ kind: "body", text: line, role: turn.role });
+      rows.push({ kind: "body", text: line, role: turn.role, align });
     }
-    rows.push({ kind: "empty", text: "" });
+    rows.push({ kind: "empty", text: "", role: turn.role, align });
   }
   if (rows.length > 0 && rows[rows.length - 1]?.kind === "empty") {
     rows.pop();
   }
   return rows;
+}
+
+export function groupTranscriptRows(rows: TranscriptRow[]): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = [];
+  let current: TranscriptRow[] = [];
+  let align: TranscriptAlign | undefined;
+  let role: ChatTurn["role"] | undefined;
+
+  const flush = () => {
+    if (current.length === 0 || align == null) return;
+    blocks.push({ align, role, rows: current });
+    current = [];
+    align = undefined;
+    role = undefined;
+  };
+
+  for (const row of rows) {
+    if (row.kind === "empty") {
+      flush();
+      continue;
+    }
+    if (align != null && row.align !== align) flush();
+    align = row.align;
+    role = row.role;
+    current.push(row);
+  }
+  flush();
+  return blocks;
 }
 
 /** Keep the latest rows so a long last reply still fits by showing its end. */
