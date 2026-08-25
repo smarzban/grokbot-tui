@@ -2,10 +2,10 @@
 
 Unofficial terminal UI for chatting with your Grok Bot agents while you work.
 
-**This is not an official xAI or Cursor product.** There is no public Grok Bot chat API. The TUI talks to the undocumented host HTTP gateway (`GET /health`, `POST /api/<command>`) through two community clients:
+**This is not an official xAI or Cursor product.** There is no public Grok Bot chat API. The TUI talks to the undocumented host HTTP gateway through two community clients:
 
-- [`@adam91holt/grokbot-sdk`](https://github.com/adam91holt/grokbot-sdk) — typed gateway client. Primary path when a URL/token or `gateway.json` is available.
-- [`grok-bot-cli`](https://github.com/ScriptedAlchemy/grok-bot-cli) (`gbot`) — reads the Grok Bot **desktop app** encrypted session on macOS so a laptop user does not need a tunnel.
+- [`@adam91holt/grokbot-sdk`](https://github.com/adam91holt/grokbot-sdk) — typed client for a **local box / tunneled** host (`GET /health`, `POST /api/<command>`). Used when `GROKBOT_GATEWAY_URL` / `SAND_GATEWAY_TOKEN` or `gateway.json` is available.
+- [`grok-bot-cli`](https://github.com/ScriptedAlchemy/grok-bot-cli) (`gbot`) — Grok Bot **desktop app** session on macOS. The TUI uses `gbot`'s `connectGateway`, `listAgents`, `sendPrompt`, and `getTranscriptTail` (POST `{gatewayUrl}/api/{method}` with Bearer **and** session routing headers). It does **not** feed that session into the SDK: the SDK drops URL paths, omits session headers, and probes `GET /health`, which 404s on the routed desktop gateway.
 
 Command names and response shapes come from those libraries / the live host. The gateway can change without notice. Treat the gateway token and every transcript as secrets.
 
@@ -86,9 +86,11 @@ Optional: `GROK_TUI_DEFAULT_AGENT=Ada` to open that seat on launch.
 
 ### From a laptop with the Grok Bot desktop app
 
-Open Grok Bot and sign in. `grok-bot-cli` can decrypt the app session (`~/Library/Application Support/Grok Bot/gateway-descriptor.json` + macOS keychain) and obtain the same gateway URL + token. If no env URL/token and no `gateway.json` are present, this TUI tries that path automatically. You should not need to copy a token.
+Open Grok Bot and sign in. After you Allow the Keychain prompt ("Grok Bot Safe Storage"), `grok-bot-cli` decrypts `~/Library/Application Support/Grok Bot/gateway-descriptor.json` and gets `{ gatewayUrl, gatewayToken, gatewayHeaders }`. Headers often include routing such as `x-anyrun-network-token`; the URL may include a path.
 
-`gbot doctor` from `grok-bot-cli` is useful if the session is missing or unusable.
+If no env URL/token and no `gateway.json` are present, this TUI uses that session the same way `gbot` does. You should not need to copy a token. A 404 on `GET /health` is ignored; `listAgents` is the connectivity check.
+
+`gbot doctor` is useful if the session is missing or unusable.
 
 ## Env vars
 
@@ -110,7 +112,7 @@ npm test
 npm run typecheck
 ```
 
-Client tests drive a **mock host**: in-memory `MockHostClient`, plus a scripted `fetch` that speaks `GET /health` and `POST /api/listAgents|sendPrompt|getAgentTranscriptTail|interruptAgentRun` so `@adam91holt/grokbot-sdk` is exercised without a live box. Coverage includes list, send + poll until reply, host-down, and missing/wrong auth.
+Client tests drive a **mock host**: in-memory `MockHostClient`, a scripted local-box `fetch` for the SDK path, and a scripted desktop gateway (path-preserving URL + extra session headers, no `GET /health`) for `DesktopHostClient`. Coverage includes list, send + poll until reply, host-down, missing/wrong auth, health-404-then-listAgents boot, and desktop header/path forwarding.
 
 This environment usually cannot talk to a real Grok Bot host. Use `--mock` to exercise the TUI; point `.env` at your host to chat for real.
 

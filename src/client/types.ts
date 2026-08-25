@@ -56,11 +56,13 @@ export type HostErrorKind = "missing-auth" | "host-down" | "unauthorized" | "unk
 
 export class HostClientError extends Error {
   readonly kind: HostErrorKind;
+  readonly status?: number;
 
-  constructor(kind: HostErrorKind, message: string) {
+  constructor(kind: HostErrorKind, message: string, options?: { status?: number }) {
     super(message);
     this.name = "HostClientError";
     this.kind = kind;
+    if (options?.status != null) this.status = options.status;
   }
 }
 

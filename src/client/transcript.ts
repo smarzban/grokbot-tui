@@ -51,3 +51,15 @@ export function turnsFromHostTranscript(payload: unknown): ChatTurn[] {
     };
   });
 }
+
+export function lastAssistantText(turns: ChatTurn[]): string | undefined {
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const turn = turns[i];
+    if (turn?.role === "assistant" && turn.text) return turn.text;
+  }
+  return undefined;
+}
+
+export function assistantCount(turns: ChatTurn[]): number {
+  return turns.filter((turn) => turn.role === "assistant").length;
+}
