@@ -166,9 +166,10 @@ export function turnsToRows(
   const paneWidth = Math.max(1, width);
   const bodyWidth = wrapWidth(paneWidth);
   const ctx = asSpeakerContext(agentNameOrCtx);
+  const visible = turns.filter(isVisibleChatTurn);
   const rows: TranscriptRow[] = [];
-  for (const turn of turns) {
-    if (!isVisibleChatTurn(turn)) continue;
+  for (let i = 0; i < visible.length; i++) {
+    const turn = visible[i]!;
     const align = turnAlign(turn.role);
     const pending: TranscriptRow[] = [];
     if (ctx.isGroup === true) {
@@ -223,24 +224,25 @@ export function turnsToRows(
         pending.map((row) => row.text),
         paneWidth,
       );
-      for (let i = 0; i < pending.length; i++) {
-        const row = pending[i];
-        const text = padded[i];
-        if (row && text != null) pending[i] = { ...row, text };
+      for (let j = 0; j < pending.length; j++) {
+        const row = pending[j];
+        const text = padded[j];
+        if (row && text != null) pending[j] = { ...row, text };
       }
     }
     rows.push(...pending);
-    // 1:1 has no speaker labels, so two blank rows keep turns apart.
-    // Rooms already have names — one blank row is enough.
+    const next = visible[i + 1];
+    if (!next) {
+      // One blank row under the last line so it does not sit on the frame.
+      rows.push({ kind: "empty", text: "", role: turn.role, align });
+      continue;
+    }
+    if (next.role === turn.role) continue;
+    // Opposite side: 1:1 needs two blank rows (no names); rooms one.
     const gap = ctx.isGroup === true ? 1 : 2;
     for (let g = 0; g < gap; g++) {
       rows.push({ kind: "empty", text: "", role: turn.role, align });
     }
-  }
-  // Leave one empty row under the last line so it does not sit on the
-  // transcript frame. Collapse extra trailing blanks from the last gap.
-  while (rows.length > 1 && rows[rows.length - 1]?.kind === "empty" && rows[rows.length - 2]?.kind === "empty") {
-    rows.pop();
   }
   return rows;
 }

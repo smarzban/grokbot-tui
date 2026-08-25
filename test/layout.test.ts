@@ -359,8 +359,39 @@ test("long user and assistant lines wrap at 80% of the pane; short user still ri
   assert.equal(firstContentCol(hi.text), pane - 2);
 });
 
-test("last empty padding row exists under the last turn", () => {
-  const rows = turnsToRows(
+test("consecutive same-side turns stack with no empty; user→assistant still has air", () => {
+  const twoBots = turnsToRows(
+    [
+      { id: "1", role: "assistant", speaker: "Dev", text: "first" },
+      { id: "2", role: "assistant", speaker: "Dev", text: "second" },
+    ],
+    40,
+    "Dev",
+  );
+  assert.deepEqual(
+    twoBots.map((row) => row.kind),
+    ["body", "body", "empty"],
+  );
+  assert.equal(
+    twoBots.some((row, i) => row.kind === "empty" && i < twoBots.length - 1),
+    false,
+    "no blank line between consecutive assistant turns",
+  );
+
+  const twoUsers = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "one" },
+      { id: "2", role: "user", speaker: "you", text: "two" },
+    ],
+    40,
+    "Dev",
+  );
+  assert.deepEqual(
+    twoUsers.map((row) => row.kind),
+    ["body", "body", "empty"],
+  );
+
+  const userThenBot = turnsToRows(
     [
       { id: "1", role: "user", speaker: "you", text: "hi" },
       { id: "2", role: "assistant", speaker: "Dev", text: "hello" },
@@ -368,8 +399,27 @@ test("last empty padding row exists under the last turn", () => {
     40,
     "Dev",
   );
-  assert.equal(rows.at(-1)?.kind, "empty");
-  assert.ok(rows.filter((row) => row.kind === "body").length >= 2);
+  assert.deepEqual(
+    userThenBot.map((row) => row.kind),
+    ["body", "empty", "empty", "body", "empty"],
+  );
+
+  const roomSameSide = turnsToRows(
+    [
+      { id: "d1", role: "assistant", speaker: "send-message", speakerId: "dev-id", text: "a" },
+      { id: "d2", role: "assistant", speaker: "send-message", speakerId: "dev-id", text: "b" },
+    ],
+    40,
+    {
+      agentName: "project X",
+      isGroup: true,
+      members: [{ id: "dev-id", name: "Dev" }],
+    },
+  );
+  assert.deepEqual(
+    roomSameSide.map((row) => row.kind),
+    ["speaker", "body", "speaker", "body", "empty"],
+  );
 });
 
 test("1:1 rows have no speaker labels; rooms still do", () => {
