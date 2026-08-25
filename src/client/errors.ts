@@ -1,5 +1,5 @@
-import { GrokBotGatewayError } from "@adam91holt/grokbot-sdk";
 import { errorMessage } from "../redact.js";
+import { GatewayHttpError } from "./http.js";
 import { HostClientError, type HostErrorKind } from "./types.js";
 
 function codeOf(err: unknown): string | undefined {
@@ -16,7 +16,7 @@ function codeOf(err: unknown): string | undefined {
 }
 
 function httpStatus(err: unknown): number | undefined {
-  if (err instanceof GrokBotGatewayError) return err.status;
+  if (err instanceof GatewayHttpError) return err.status;
   if (err != null && typeof err === "object" && "status" in err) {
     const status = (err as { status?: unknown }).status;
     if (typeof status === "number" && Number.isFinite(status)) return status;
@@ -41,18 +41,10 @@ export function mapHostError(err: unknown, secret?: string): HostClientError {
 
   let kind: HostErrorKind = "unknown";
 
-  if (err instanceof GrokBotGatewayError) {
-    if (err.command === "discover" || err.status === 401 || err.status === 403) {
-      kind = err.status === 401 || err.status === 403 ? "unauthorized" : "missing-auth";
-    } else if (err.status === 0) {
-      kind = /not found|gateway port|set grokbot_gateway_url/i.test(message)
-        ? "missing-auth"
-        : "host-down";
-    } else if (err.status >= 500) {
-      kind = "host-down";
-    }
-  } else if (status === 401 || status === 403) {
+  if (status === 401 || status === 403) {
     kind = "unauthorized";
+  } else if (status != null && status >= 500) {
+    kind = "host-down";
   } else if (
     code === "ECONNREFUSED" ||
     code === "ENOTFOUND" ||
@@ -72,7 +64,7 @@ export function mapHostError(err: unknown, secret?: string): HostClientError {
 }
 
 export const MISSING_AUTH_MESSAGE =
-  "No gateway token. Set SAND_GATEWAY_TOKEN (and GROKBOT_GATEWAY_URL if you are not on the Grok Bot computer), or open the Grok Bot desktop app so grok-bot-cli can use its session.";
+  "No gateway token. Set SAND_GATEWAY_TOKEN (and GROKBOT_GATEWAY_URL if you are not on the Grok Bot computer), or open the Grok Bot desktop app and Allow Keychain access.";
 
 export const HOST_DOWN_MESSAGE =
   "The Grok Bot host is not reachable. Start the host, check the tunnel, or run with --mock.";

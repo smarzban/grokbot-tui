@@ -1,6 +1,3 @@
-import { GATEWAY_API_PREFIX, GATEWAY_AUTH_SCHEME, GATEWAY_HEALTH_PATH } from "@adam91holt/grokbot-sdk";
-import type { AgentSummary, TranscriptTailResult } from "@adam91holt/grokbot-sdk";
-
 export type ScriptedAgent = {
   id: string;
   name: string;
@@ -51,45 +48,10 @@ function json(status: number, body: unknown): Response {
 
 function commandName(url: string): string {
   const parsed = new URL(url);
-  const prefix = GATEWAY_API_PREFIX.endsWith("/") ? GATEWAY_API_PREFIX : `${GATEWAY_API_PREFIX}/`;
-  if (parsed.pathname.startsWith(prefix)) {
-    return parsed.pathname.slice(prefix.length);
-  }
-  return parsed.pathname;
-}
-
-function summary(agent: ScriptedAgent): AgentSummary {
-  return {
-    id: agent.id,
-    name: agent.name,
-    description: "",
-    title: "",
-    avatarDataUrl: null,
-    avatarVersion: null,
-    avatarShape: null,
-    avatarColor: null,
-    createdAt: 0,
-    updatedAt: 0,
-    path: "",
-    isActive: false,
-    isRunning: agent.isRunning === true,
-    isComposingMessage: agent.isComposingMessage === true,
-    lastEntry: null,
-    lastMessageId: null,
-    lastMessagePreview: null,
-    lastMessageAuthorId: null,
-    newestEntryId: null,
-    hasUnread: false,
-    unreadCount: 0,
-    awaitingUserResponse: agent.awaitingUserResponse ?? null,
-    notificationsEnabled: false,
-    notifyOnUpdatesEnabled: false,
-    isHiddenFromSidebar: false,
-    origin: "user",
-    isGroup: agent.isGroup === true,
-    memberIds: agent.memberIds ?? [],
-    conversationPartnerIds: [],
-  };
+  const marker = "/api/";
+  const idx = parsed.pathname.lastIndexOf(marker);
+  if (idx >= 0) return parsed.pathname.slice(idx + marker.length);
+  return parsed.pathname.replace(/^\//, "");
 }
 
 export function createScriptedFetch(host: ScriptedHost): typeof fetch {
@@ -103,20 +65,12 @@ export function createScriptedFetch(host: ScriptedHost): typeof fetch {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const method = (init?.method ?? "GET").toUpperCase();
     const headers = new Headers(init?.headers);
-    const parsed = new URL(url);
 
-    if (method === "GET" && parsed.pathname === GATEWAY_HEALTH_PATH) {
-      return json(200, {
-        ok: true,
-        pid: 1,
-        isBusy: false,
-        activeAgentId: null,
-        startedAt: 0,
-        lastBusyAtMs: null,
-      });
+    if (method !== "POST") {
+      return json(404, { error: "not found" });
     }
 
-    const expectedAuth = `${GATEWAY_AUTH_SCHEME} ${host.token}`;
+    const expectedAuth = `Bearer ${host.token}`;
     if (host.rejectAuth || headers.get("authorization") !== expectedAuth) {
       return json(401, { error: "unauthorized" });
     }
@@ -135,11 +89,7 @@ export function createScriptedFetch(host: ScriptedHost): typeof fetch {
           agent.isRunning = false;
         }
       }
-      return json(200, host.agents.map(summary));
-    }
-
-    if (command === "getAsyncTasks" || command === "getSubagents") {
-      return json(200, []);
+      return json(200, host.agents);
     }
 
     if (command === "sendPrompt") {
@@ -164,8 +114,7 @@ export function createScriptedFetch(host: ScriptedHost): typeof fetch {
     if (command === "getAgentTranscriptTail" || command === "getAgentTranscript") {
       const id = String(body.id ?? "");
       const entries = host.transcripts.get(id) ?? [];
-      const payload: TranscriptTailResult = { entries };
-      return json(200, payload);
+      return json(200, { entries });
     }
 
     if (command === "interruptAgentRun") {

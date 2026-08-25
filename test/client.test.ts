@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createSdkBot, GatewayHostClient } from "../src/client/host.js";
+import { HttpHostClient } from "../src/client/host.js";
 import { CHIEF_ID, DEV_ID, MockHostClient, PROJECT_X_ID, mockPhotoPath } from "../src/client/mock.js";
 import { openHostClient } from "../src/client/factory.js";
 import { HostClientError } from "../src/client/types.js";
@@ -15,16 +15,12 @@ import { ADA_ID, ADA_NAME, createScriptedFetch, createScriptedHost } from "./scr
 const GATEWAY = "http://127.0.0.1:1340";
 
 function clientFor(host: ReturnType<typeof createScriptedHost>, token = host.token) {
-  const bot = createSdkBot({
+  return new HttpHostClient({
     gatewayUrl: GATEWAY,
     token,
-    env: {
-      GROKBOT_GATEWAY_URL: GATEWAY,
-      SAND_GATEWAY_TOKEN: token ?? "",
-    },
+    source: "gateway",
     fetch: createScriptedFetch(host),
   });
-  return new GatewayHostClient(bot, "gateway", token);
 }
 
 test("mock host getTranscript picks up an appended app-side turn", async () => {
@@ -202,6 +198,26 @@ test("gateway client lists agents through a mock host", async () => {
   assert.equal(agents[0]?.id, ADA_ID);
 });
 
+test("gateway client does not probe GET /health", async () => {
+  const host = createScriptedHost();
+  let gets = 0;
+  const inner = createScriptedFetch(host);
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (method === "GET") gets += 1;
+    return inner(input, init);
+  };
+  const client = new HttpHostClient({
+    gatewayUrl: GATEWAY,
+    token: host.token,
+    source: "gateway",
+    fetch: fetchImpl,
+  });
+  await client.health();
+  await client.listAgents();
+  assert.equal(gets, 0);
+});
+
 test("gateway client includes groups and resolves member names from the bot roster", async () => {
   const host = createScriptedHost({
     agents: [
@@ -250,7 +266,7 @@ test("gateway client sendPrompt polls until idle and returns the last reply", as
 test("gateway client maps a down host", async () => {
   const host = createScriptedHost({ down: true });
   const client = clientFor(host);
-  await assert.rejects(() => client.health(), (err: unknown) => {
+  await assert.rejects(() => client.listAgents(), (err: unknown) => {
     assert.ok(err instanceof HostClientError);
     assert.equal(err.kind, "host-down");
     assert.doesNotMatch(err.message, /test-gateway-token/);
@@ -268,6 +284,22 @@ test("gateway client maps missing/wrong auth", async () => {
     assert.doesNotMatch(err.message, /test-gateway-token/);
     return true;
   });
+});
+
+test("openHostClient uses env URL+token through the owned POST helper", async () => {
+  const host = createScriptedHost();
+  const client = await openHostClient({
+    config: { gatewayUrl: GATEWAY, hasToken: true, mock: false },
+    token: host.token,
+    env: {},
+    fetch: createScriptedFetch(host),
+    loadDesktop: async () => {
+      throw new Error("desktop session must not load when env token is set");
+    },
+  });
+  assert.equal(client.source, "gateway");
+  const agents = await client.listAgents();
+  assert.equal(agents[0]?.name, ADA_NAME);
 });
 
 test("openHostClient uses mock when asked", async () => {

@@ -1,9 +1,20 @@
-import { GrokBot } from "@adam91holt/grokbot-sdk";
+import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
-import { mapHostError } from "./errors.js";
-import { asAgentRow, enrichRoster, turnsFromHostTranscript, unwrapAgentList } from "./transcript.js";
+import { isNotFoundError, mapHostError } from "./errors.js";
+import { gatewayPost, trimGatewayUrl, type GatewaySession } from "./http.js";
+import { redact } from "../redact.js";
+import {
+  asAgentRow,
+  assistantCount,
+  enrichRoster,
+  lastAssistantText,
+  turnsFromHostTranscript,
+  unwrapAgentList,
+} from "./transcript.js";
 import {
   DEFAULT_TRANSCRIPT_LIMIT,
+  HostClientError,
   type Agent,
   type ChatTurn,
   type Health,
@@ -13,131 +24,176 @@ import {
   type SendResult,
 } from "./types.js";
 
-export class GatewayHostClient implements HostClient {
-  readonly source: HostSource;
-  readonly bot: GrokBot;
-  readonly #secret?: string;
+export type HttpHostOptions = GatewaySession & {
+  source?: HostSource;
+  fetch?: typeof fetch;
+};
 
-  constructor(bot: GrokBot, source: HostSource = "gateway", secret?: string) {
-    this.bot = bot;
-    this.source = source;
-    this.#secret = secret;
+function sessionSecrets(session: GatewaySession): string[] {
+  const values = [session.token];
+  for (const value of Object.values(session.headers ?? {})) {
+    if (value) values.push(value);
+  }
+  return values;
+}
+
+function mapSessionError(err: unknown, session: GatewaySession): HostClientError {
+  const mapped = mapHostError(err, session.token);
+  let message = mapped.message;
+  for (const secret of sessionSecrets(session)) {
+    message = redact(message, secret);
+  }
+  if (message === mapped.message) return mapped;
+  return new HostClientError(mapped.kind, message, mapped.status != null ? { status: mapped.status } : undefined);
+}
+
+/**
+ * Host client over our POST helper. Used for env URL+token and the desktop session.
+ * Does not probe GET /health.
+ */
+export class HttpHostClient implements HostClient {
+  readonly source: HostSource;
+  readonly #session: GatewaySession;
+  readonly #fetch?: typeof fetch;
+
+  constructor(options: HttpHostOptions) {
+    this.source = options.source ?? "gateway";
+    this.#session = {
+      gatewayUrl: trimGatewayUrl(options.gatewayUrl),
+      token: options.token,
+      headers: options.headers ?? {},
+    };
+    this.#fetch = options.fetch;
+  }
+
+  #fetchImpl(): typeof fetch {
+    return this.#fetch ?? ((input, init) => globalThis.fetch(input, init));
+  }
+
+  #call(method: string, body: unknown = {}): Promise<unknown> {
+    return gatewayPost(this.#session, method, body, this.#fetchImpl());
   }
 
   async health(): Promise<Health> {
-    try {
-      const health = await this.bot.health();
-      return {
-        ok: health.ok !== false,
-        busy: health.isBusy,
-        activeAgentId: health.activeAgentId ?? null,
-      };
-    } catch (err) {
-      throw mapHostError(err, this.#secret);
-    }
+    return { ok: true };
   }
 
   async listAgents(): Promise<Agent[]> {
     try {
-      const raw = await this.bot.listAgents();
+      const data = await this.#call("listAgents", {});
       const agents: Agent[] = [];
-      for (const row of unwrapAgentList(raw)) {
+      for (const row of unwrapAgentList(data)) {
         const agent = asAgentRow(row);
         if (agent) agents.push(agent);
       }
       return enrichRoster(agents);
     } catch (err) {
-      throw mapHostError(err, this.#secret);
+      throw mapSessionError(err, this.#session);
     }
   }
 
   async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
     try {
-      const payload = await this.bot.getAgentTranscriptTail({ id: agentId, limit });
+      const payload = await this.#call("getAgentTranscriptTail", { id: agentId, limit });
       const turns = turnsFromHostTranscript(payload);
-      const secret = this.#secret;
+      const token = this.#session.token;
+      const extra = this.#session.headers ?? {};
       return await hydrateTurnImages(agentId, turns, {
-        call: (method, body) => this.bot.command(method, body),
-        fetchUrl: secret
-          ? (url) => fetchBytesWithHeaders(url, { authorization: `Bearer ${secret}` })
-          : undefined,
+        call: (method, body) => this.#call(method, body),
+        fetchUrl: (url) =>
+          fetchBytesWithHeaders(url, {
+            authorization: `Bearer ${token}`,
+            ...extra,
+          }),
       });
     } catch (err) {
-      throw mapHostError(err, this.#secret);
+      throw mapSessionError(err, this.#session);
     }
   }
 
   async sendPrompt(input: SendPromptInput): Promise<SendResult> {
     const wait = input.wait !== false;
     const startedAt = Date.now();
+    let beforeCount = 0;
+    let beforeReply: string | undefined;
     try {
       if (wait) {
-        const result = await this.bot.sendPrompt({
-          agentId: input.agentId,
-          prompt: input.prompt,
-          wait: true,
-          timeoutMs: input.timeoutMs,
-          intervalMs: 250,
-          signal: input.signal,
-        });
-        const status =
-          result.status === "idle" ||
-          result.status === "awaiting-user" ||
-          result.status === "timeout" ||
-          result.status === "error"
-            ? result.status
-            : "idle";
-        return {
-          accepted: result.accepted !== false,
-          status,
-          ...(typeof result.reply === "string" ? { reply: result.reply } : {}),
-          elapsedMs: typeof result.elapsedMs === "number" ? result.elapsedMs : Date.now() - startedAt,
-        };
+        const prior = await this.getTranscript(input.agentId);
+        beforeCount = assistantCount(prior);
+        beforeReply = lastAssistantText(prior);
       }
-
-      const sent = await this.bot.sendPrompt({
+      const sent = await this.#call("sendPrompt", {
         agentId: input.agentId,
         prompt: input.prompt,
+        clientNonce: randomUUID(),
       });
+      const accepted =
+        sent != null && typeof sent === "object" && "accepted" in sent
+          ? (sent as { accepted?: boolean }).accepted !== false
+          : true;
+
+      if (!wait) {
+        return { accepted, status: "idle", elapsedMs: Date.now() - startedAt };
+      }
+
+      const reply = await this.#waitForReply(input, beforeCount, beforeReply);
+      if (reply.status === "cancelled") {
+        return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
+      }
       return {
-        accepted: sent.accepted,
-        status: "idle",
+        accepted,
+        status: reply.status,
+        ...(reply.text ? { reply: reply.text } : {}),
         elapsedMs: Date.now() - startedAt,
       };
     } catch (err) {
       if (input.signal?.aborted) {
-        try {
-          await this.bot.interruptAgentRun({ id: input.agentId });
-        } catch {
-          // Interrupt is best-effort; the wait is already cancelled.
-        }
+        await this.interrupt(input.agentId).catch(() => undefined);
         return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
       }
-      throw mapHostError(err, this.#secret);
+      throw mapSessionError(err, this.#session);
     }
   }
 
   async interrupt(agentId: string): Promise<{ hadActiveRun: boolean }> {
     try {
-      const result = await this.bot.interruptAgentRun({ id: agentId });
-      return { hadActiveRun: result.hadActiveRun === true };
+      const result = (await this.#call("interruptAgentRun", { id: agentId })) as {
+        hadActiveRun?: boolean;
+      };
+      return { hadActiveRun: result?.hadActiveRun === true };
     } catch (err) {
-      throw mapHostError(err, this.#secret);
+      if (isNotFoundError(err)) return { hadActiveRun: false };
+      throw mapSessionError(err, this.#session);
     }
   }
-}
 
-export function createSdkBot(options: {
-  gatewayUrl?: string;
-  token?: string;
-  env?: NodeJS.ProcessEnv;
-  fetch?: typeof fetch;
-}): GrokBot {
-  return new GrokBot({
-    ...(options.gatewayUrl ? { gatewayUrl: options.gatewayUrl } : {}),
-    ...(options.token ? { token: options.token } : {}),
-    ...(options.env ? { env: options.env } : {}),
-    ...(options.fetch ? { fetch: options.fetch } : {}),
-    slimAvatars: true,
-  });
+  async #waitForReply(
+    input: SendPromptInput,
+    beforeCount: number,
+    beforeReply: string | undefined,
+  ): Promise<{ status: SendResult["status"]; text?: string }> {
+    const timeoutMs = input.timeoutMs;
+    const startedAt = Date.now();
+    while (true) {
+      if (input.signal?.aborted) {
+        await this.interrupt(input.agentId).catch(() => undefined);
+        return { status: "cancelled" };
+      }
+      const turns = await this.getTranscript(input.agentId);
+      const count = assistantCount(turns);
+      const text = lastAssistantText(turns);
+      if (count > beforeCount || (text != null && text !== beforeReply)) {
+        return { status: "idle", ...(text ? { text } : {}) };
+      }
+      if (timeoutMs != null && Date.now() - startedAt >= timeoutMs) {
+        return { status: "timeout", ...(text ? { text } : {}) };
+      }
+      try {
+        await delay(250, undefined, { signal: input.signal });
+      } catch {
+        await this.interrupt(input.agentId).catch(() => undefined);
+        return { status: "cancelled" };
+      }
+    }
+  }
 }

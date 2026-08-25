@@ -1,4 +1,3 @@
-import { entriesFromTranscriptPayload, turnsFromTranscriptEntries } from "@adam91holt/grokbot-sdk";
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Agent, AgentMember, ChatImage, ChatTurn } from "./types.js";
@@ -82,6 +81,58 @@ function unwrapEntry(value: unknown): unknown {
   if (!isRecord(value)) return value;
   if (value.kind == null && "entry" in value) return value.entry;
   return value;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/** Host `getAgentTranscriptTail` is `{ entries, nextBeforeSeq? }`; some calls return the array. */
+export function entriesFromTranscriptPayload(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (isRecord(value) && Array.isArray(value.entries)) return value.entries;
+  return [];
+}
+
+function agentRef(value: unknown): { id?: string; name?: string } {
+  if (typeof value === "string" && value.length > 0) return { id: value };
+  if (!isRecord(value)) return {};
+  return {
+    ...(asNonEmptyString(value.id) != null ? { id: asNonEmptyString(value.id) } : {}),
+    ...(asNonEmptyString(value.name) != null ? { name: asNonEmptyString(value.name) } : {}),
+  };
+}
+
+function speakerFromEntry(entry: Record<string, unknown>): { speaker: string; agentId?: string } {
+  const author = agentRef(entry.author);
+  const fromAgent = agentRef(entry.fromAgent);
+  const fromUser = agentRef(entry.fromUser);
+  const agentId = author.id ?? fromAgent.id;
+  if (author.name != null) return { speaker: author.name, ...(agentId != null ? { agentId } : {}) };
+  if (fromAgent.name != null) {
+    return { speaker: fromAgent.name, ...(fromAgent.id != null ? { agentId: fromAgent.id } : {}) };
+  }
+  if (fromUser.name != null) return { speaker: fromUser.name };
+  if (entry.role === "user" && fromAgent.id == null && author.id == null) {
+    return { speaker: "user" };
+  }
+  if (entry.role === "assistant") return { speaker: "assistant", ...(agentId != null ? { agentId } : {}) };
+  if (agentId != null) return { speaker: agentId, agentId };
+  return { speaker: asNonEmptyString(entry.kind) ?? "unknown" };
+}
+
+function textFromHostEntry(entry: Record<string, unknown>): string | undefined {
+  if (entry.streaming === true) return undefined;
+  const kind = asNonEmptyString(entry.kind);
+  if (kind === "send-message") {
+    const message = isRecord(entry.message) ? entry.message : undefined;
+    if (!message || message.type !== "text") return undefined;
+    return asNonEmptyString(message.content);
+  }
+  if (kind === "message" || kind == null) {
+    return typeof entry.content === "string" && entry.content.trim().length > 0 ? entry.content : undefined;
+  }
+  return undefined;
 }
 
 function stringList(value: unknown): string[] {
@@ -264,7 +315,7 @@ function imagesFromContentParts(content: unknown): ChatImage[] {
  * - store kind `user-attachment` (`file_name` / `file_path`, not camelCase)
  * - SendMessage `{ type: "attachment" }` (legacy)
  * - SendMessage `{ type: "text", images: [{ url, alt, width, height }] }`
- * SDK `turnsFromTranscriptEntries` drops non-text parts.
+ * Non-text parts (tools, widgets) are skipped; images are collected separately.
  */
 export function imagesFromHostEntry(value: unknown): ChatImage[] {
   const entry = unwrapEntry(value);
@@ -321,22 +372,21 @@ export function parseHostTranscript(payload: unknown): { turns: ChatTurn[]; next
   const turns: ChatTurn[] = [];
   entries.forEach((raw, index) => {
     const entry = unwrapEntry(raw);
-    const textTurns = turnsFromTranscriptEntries([raw]);
-    const images = imagesFromHostEntry(raw);
     const rec = isRecord(entry) ? entry : {};
-    if (textTurns.length > 0) {
-      for (const turn of textTurns) {
-        const role = roleFromEntry(rec, turn.speaker);
-        turns.push({
-          id: `${turn.timestampMs ?? "t"}-${index}-${turn.speaker}`,
-          role,
-          speaker: turn.speaker,
-          ...(turn.agentId ? { speakerId: turn.agentId } : {}),
-          text: turn.text,
-          ...(turn.timestampMs != null ? { timestampMs: turn.timestampMs } : {}),
-          ...(images.length > 0 ? { images } : {}),
-        });
-      }
+    const text = isRecord(entry) ? textFromHostEntry(rec) : undefined;
+    const images = imagesFromHostEntry(raw);
+    if (text != null) {
+      const { speaker, agentId } = speakerFromEntry(rec);
+      const timestampMs = typeof rec.timestampMs === "number" && Number.isFinite(rec.timestampMs) ? rec.timestampMs : undefined;
+      turns.push({
+        id: `${timestampMs ?? "t"}-${index}-${speaker}`,
+        role: roleFromEntry(rec, speaker),
+        speaker,
+        ...(agentId ? { speakerId: agentId } : {}),
+        text,
+        ...(timestampMs != null ? { timestampMs } : {}),
+        ...(images.length > 0 ? { images } : {}),
+      });
       return;
     }
     if (images.length === 0) return;
