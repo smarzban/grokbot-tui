@@ -57,7 +57,7 @@ async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  render(<App config={config} token={token} mock={mock} />);
+  render(<App config={config} token={token} mock={mock} />, { alternateScreen: true });
 }
 
 main(process.argv).catch((err: unknown) => {

@@ -11,11 +11,12 @@ Command names and response shapes come from those libraries / the live host. The
 
 ## What v1 does
 
-- Lists your bots (name + id)
-- Opens a split chat: transcript on top, compose box at the bottom
+- Lists your bots by name (a short id prefix only if two names collide)
+- Opens a framed chat: agent name + idle/waiting in the header, clipped transcript, compose bar at the bottom
 - Sends a message, then **polls until the bot is idle** and shows the last reply (the host does not stream tokens)
 - Switch bots without quitting
 - Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
+- Uses the terminal alternate screen so the transcript stays framed instead of spilling into scrollback
 
 Out of scope: groups/rooms, streaming, creating or deleting agents, Slack, avatars, rich markdown.
 

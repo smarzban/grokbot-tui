@@ -1,8 +1,16 @@
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useInput, useWindowSize } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
+import {
+  chromeRows,
+  composeVisible,
+  innerWidth,
+  transcriptInnerHeight,
+  turnsToRows,
+  visibleTranscript,
+} from "./layout.js";
 
 type Props = {
   client: HostClient;
@@ -18,14 +26,31 @@ type Status =
   | { kind: "awaiting-user" }
   | { kind: "error"; message: string };
 
-function visibleTurns(turns: ChatTurn[], maxLines: number): ChatTurn[] {
-  if (turns.length <= maxLines) return turns;
-  return turns.slice(turns.length - maxLines);
+function headerStatus(status: Status): string {
+  switch (status.kind) {
+    case "loading":
+      return "loading";
+    case "sending":
+      return "waiting";
+    case "awaiting-user":
+      return "your turn";
+    case "error":
+      return "error";
+    default:
+      return "idle";
+  }
+}
+
+function termSize(columns: number, rows: number): { width: number; height: number } {
+  return {
+    width: Math.max(40, columns || 80),
+    height: Math.max(12, rows || 24),
+  };
 }
 
 export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
   const { exit } = useApp();
-  const { stdout } = useStdout();
+  const { columns, rows } = useWindowSize();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -35,6 +60,7 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
   const statusRef = useRef(status);
   statusRef.current = status;
   const agentId = agent.id;
+  const displayName = agent.name.trim() || "agent";
 
   const load = useCallback(async () => {
     setStatus({ kind: "loading" });
@@ -157,64 +183,94 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
     if (input) setDraft((value) => value + input);
   });
 
-  const rows = stdout?.rows;
-  const cols = stdout?.columns;
-  const transcriptBudget = Math.max(4, (rows ?? 24) - 10);
-  const shown = useMemo(() => visibleTurns(turns, transcriptBudget), [turns, transcriptBudget]);
-
-  const statusLine =
-    status.kind === "loading"
-      ? "Loading transcript…"
-      : status.kind === "sending"
-        ? "Waiting for reply…  Esc cancel"
-        : status.kind === "awaiting-user"
-          ? "Agent is waiting for you (card/question in the desktop app)."
-          : status.kind === "error"
-            ? status.message
-            : turns.length === 0
-              ? "No messages yet. Type below and press Enter."
-              : "";
+  const { width, height } = termSize(columns, rows);
+  const inner = innerWidth(width);
+  const transcriptH = Math.max(3, height - chromeRows());
+  const lineBudget = Math.max(1, transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0));
+  const allRows = useMemo(() => turnsToRows(turns, Math.max(8, inner - 2)), [turns, inner]);
+  const view = useMemo(() => visibleTranscript(allRows, lineBudget), [allRows, lineBudget]);
+  const composed = composeVisible(draft, inner);
+  const canType = status.kind !== "sending" && status.kind !== "loading";
+  const busy = status.kind === "sending";
 
   return (
-    <Box flexDirection="column" {...(rows ? { height: rows } : {})} {...(cols ? { width: cols } : {})}>
-      <Box paddingX={1} borderStyle="single" borderColor="cyan">
-        <Text>
-          <Text bold color="cyan">
-            {agent.name}
-          </Text>
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+      <Box
+        borderStyle="single"
+        borderColor="cyan"
+        paddingX={1}
+        height={3}
+        overflow="hidden"
+        justifyContent="space-between"
+      >
+        <Text bold color="cyan">
+          {displayName}
+        </Text>
+        <Text dimColor>{headerStatus(status)}</Text>
+      </Box>
+
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="gray"
+        paddingX={1}
+        height={transcriptH}
+        overflow="hidden"
+      >
+        {status.kind === "error" ? <Text color="red">{status.message}</Text> : null}
+        {view.rows.length === 0 && status.kind !== "error" ? (
           <Text dimColor>
-            {"  "}
-            {agent.id}  ·  {client.source}
+            {status.kind === "loading" ? "Loading…" : "No messages yet. Type below and press Enter."}
           </Text>
-        </Text>
+        ) : (
+          <>
+            {view.clipped ? <Text dimColor>···</Text> : null}
+            {view.rows.map((row, i) => {
+              if (row.kind === "empty") {
+                return <Text key={`e-${i}`}> </Text>;
+              }
+              const color = row.role === "user" ? "cyan" : row.kind === "speaker" ? "green" : "white";
+              const text = row.kind === "body" ? `  ${row.text}` : row.text;
+              return (
+                <Text
+                  key={`${row.kind}-${i}-${row.text.slice(0, 16)}`}
+                  bold={row.kind === "speaker"}
+                  color={color}
+                  wrap="truncate"
+                >
+                  {text}
+                </Text>
+              );
+            })}
+          </>
+        )}
       </Box>
 
-      <Box flexGrow={1} flexDirection="column" paddingX={1} overflow="hidden">
-        {shown.map((turn) => (
-          <Box key={turn.id} flexDirection="column" marginBottom={1}>
-            <Text color={turn.role === "user" ? "cyan" : "green"} bold>
-              {turn.role === "user" ? "you" : turn.speaker}
-            </Text>
-            <Text wrap="wrap">{turn.text}</Text>
-          </Box>
-        ))}
-        {statusLine ? (
-          <Text color={status.kind === "error" ? "red" : "yellow"} dimColor={status.kind !== "error"}>
-            {statusLine}
+      <Box
+        borderStyle="single"
+        borderColor={busy ? "yellow" : "cyan"}
+        paddingX={1}
+        height={3}
+        overflow="hidden"
+      >
+        {draft.length === 0 ? (
+          <Text>
+            {canType ? <Text inverse> </Text> : <Text dimColor> </Text>}
+            <Text dimColor>{busy ? "waiting…" : "message"}</Text>
           </Text>
-        ) : null}
+        ) : (
+          <Text>
+            {composed.prefix}
+            {canType ? <Text inverse> </Text> : null}
+          </Text>
+        )}
       </Box>
 
-      <Box paddingX={1} borderStyle="single" borderColor={status.kind === "sending" ? "yellow" : "gray"}>
-        <Text color="cyan">{"> "}</Text>
-        <Text>
-          {draft}
-          {status.kind !== "sending" && status.kind !== "loading" ? <Text inverse> </Text> : null}
-        </Text>
-      </Box>
-      <Box paddingX={1}>
+      <Box height={1} overflow="hidden" paddingX={1}>
         <Text dimColor>
-          enter send  esc {status.kind === "sending" ? "cancel" : "bots"}  ctrl+b switch  ctrl+c quit
+          {busy
+            ? "Esc cancel  ·  Ctrl+b switch  ·  Ctrl+c quit"
+            : "Enter send  ·  Esc bots  ·  Ctrl+b switch  ·  Ctrl+c quit"}
         </Text>
       </Box>
     </Box>

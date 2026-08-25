@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, useWindowSize } from "ink";
 import type { HostErrorKind } from "../client/types.js";
 
 export function errorTitle(kind: HostErrorKind): string {
@@ -35,9 +35,16 @@ type Props = {
 
 export function ErrorScreen({ kind, message, onRetry }: Props) {
   const { exit } = useApp();
+  const { columns, rows } = useWindowSize();
+  const width = Math.max(40, columns || 80);
+  const height = Math.max(12, rows || 24);
 
   useInput((input, key) => {
     if (input === "q" || key.escape) {
+      exit();
+      return;
+    }
+    if (key.ctrl && input === "c") {
       exit();
       return;
     }
@@ -47,16 +54,27 @@ export function ErrorScreen({ kind, message, onRetry }: Props) {
   });
 
   return (
-    <Box flexDirection="column" padding={1} borderStyle="round" borderColor="red">
-      <Text color="red" bold>
-        {errorTitle(kind)}
-      </Text>
-      <Text>{message}</Text>
-      <Box marginTop={1}>
-        <Text dimColor>{errorHint(kind)}</Text>
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+      <Box borderStyle="single" borderColor="red" paddingX={1} height={3} overflow="hidden">
+        <Text color="red" bold>
+          {errorTitle(kind)}
+        </Text>
       </Box>
-      <Box marginTop={1}>
-        <Text dimColor>r retry  q quit</Text>
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="gray"
+        paddingX={1}
+        flexGrow={1}
+        overflow="hidden"
+      >
+        <Text>{message}</Text>
+        <Box marginTop={1}>
+          <Text dimColor>{errorHint(kind)}</Text>
+        </Box>
+      </Box>
+      <Box borderStyle="single" borderColor="gray" paddingX={1} height={3} overflow="hidden">
+        <Text dimColor>r retry  ·  q quit</Text>
       </Box>
     </Box>
   );

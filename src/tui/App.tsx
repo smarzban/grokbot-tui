@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Box, Text, useWindowSize } from "ink";
 import { useCallback, useEffect, useState } from "react";
 import type { AppConfig } from "../config.js";
 import { probeAndList } from "../client/boot.js";
@@ -25,6 +25,31 @@ function pickDefault(agents: Agent[], wanted?: string): Agent | undefined {
   if (!wanted) return undefined;
   const needle = wanted.trim().toLowerCase();
   return agents.find((agent) => agent.id.toLowerCase() === needle || agent.name.toLowerCase() === needle);
+}
+
+function BootScreen({ note }: { note: string }) {
+  const { columns, rows } = useWindowSize();
+  const width = Math.max(40, columns || 80);
+  const height = Math.max(12, rows || 24);
+  return (
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+      <Box borderStyle="single" borderColor="cyan" paddingX={1} height={3} overflow="hidden">
+        <Text bold color="cyan">
+          Grok Bot
+        </Text>
+      </Box>
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="gray"
+        paddingX={1}
+        flexGrow={1}
+        overflow="hidden"
+      >
+        <Text dimColor>{note}</Text>
+      </Box>
+    </Box>
+  );
 }
 
 export function App({ config, token, mock }: Props) {
@@ -81,11 +106,7 @@ export function App({ config, token, mock }: Props) {
   }, [boot, client, token]);
 
   if (screen.name === "boot") {
-    return (
-      <Box padding={1}>
-        <Text color="yellow">{bootNote}</Text>
-      </Box>
-    );
+    return <BootScreen note={bootNote} />;
   }
 
   if (screen.name === "error") {
@@ -93,18 +114,13 @@ export function App({ config, token, mock }: Props) {
   }
 
   if (!client) {
-    return (
-      <Box padding={1}>
-        <Text color="red">Client was not created.</Text>
-      </Box>
-    );
+    return <BootScreen note="Client was not created." />;
   }
 
   if (screen.name === "picker") {
     return (
       <Picker
         agents={agents}
-        source={client.source}
         onSelect={(agent) => setScreen({ name: "chat", agent })}
         onRefresh={() => void refreshRoster()}
       />
