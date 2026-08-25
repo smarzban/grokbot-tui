@@ -1,3 +1,5 @@
+import { isCtrlKey } from "./keys.js";
+
 export const MIN_COMPOSE_INNER = 1;
 export const MAX_COMPOSE_INNER = 5;
 
@@ -257,7 +259,7 @@ export function handleComposeKey(
   if (key.rightArrow && !key.ctrl && !isCommand(key)) {
     return { type: "set", draft: { text: draft.text, caret: moveCaret(draft.caret, draft.text.length, 1) } };
   }
-  const ctrlJ = Boolean(key.ctrl) && (input === "j" || input === "J" || input === "\n");
+  const ctrlJ = isCtrlKey(input, key, "j") || (Boolean(key.ctrl) && input === "\n");
   const lineFeedWithoutReturn = input === "\n" && !key.return;
   if ((key.return && key.shift) || lineFeedWithoutReturn || ctrlJ) {
     return { type: "set", draft: insertAt(draft.text, draft.caret, "\n") };

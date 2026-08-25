@@ -1,5 +1,6 @@
 import { Box, Text, useApp, useInput, useWindowSize } from "ink";
 import type { HostErrorKind } from "../client/types.js";
+import { isCtrlKey } from "./keys.js";
 
 export function errorTitle(kind: HostErrorKind): string {
   switch (kind) {
@@ -40,11 +41,11 @@ export function ErrorScreen({ kind, message, onRetry }: Props) {
   const height = Math.max(12, rows || 24);
 
   useInput((input, key) => {
-    if (input === "q" || key.escape) {
+    if (isCtrlKey(input, key, "c")) {
       exit();
       return;
     }
-    if (key.ctrl && input === "c") {
+    if (input === "q" || key.escape) {
       exit();
       return;
     }

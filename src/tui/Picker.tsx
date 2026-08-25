@@ -1,6 +1,7 @@
 import { Box, Text, useApp, useInput, useWindowSize } from "ink";
 import { useState } from "react";
 import type { Agent } from "../client/types.js";
+import { isCtrlKey } from "./keys.js";
 import { agentLabel, innerWidth } from "./layout.js";
 import { pickerItems, pickerRows, visiblePickerRows } from "./roster.js";
 
@@ -29,11 +30,11 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
   const allRows = pickerRows(agents);
 
   useInput((input, key) => {
-    if (input === "q" || key.escape) {
+    if (isCtrlKey(input, key, "c")) {
       exit();
       return;
     }
-    if (key.ctrl && input === "c") {
+    if (input === "q" || key.escape) {
       exit();
       return;
     }
@@ -42,11 +43,11 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
       return;
     }
     if (items.length === 0) return;
-    if (key.upArrow || input === "k" || (key.ctrl && input === "p")) {
+    if (key.upArrow || input === "k" || isCtrlKey(input, key, "p")) {
       setIndex((current) => (current <= 0 ? items.length - 1 : current - 1));
       return;
     }
-    if (key.downArrow || input === "j" || (key.ctrl && input === "n")) {
+    if (key.downArrow || input === "j" || isCtrlKey(input, key, "n")) {
       setIndex((current) => (current >= items.length - 1 ? 0 : current + 1));
       return;
     }

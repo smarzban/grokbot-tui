@@ -13,7 +13,6 @@ import {
   visibleTranscript,
   wrapLine,
   wrapText,
-  wrapWidth,
 } from "../src/tui/layout.ts";
 
 test("wrapLine breaks on spaces and hard-wraps long tokens", () => {
@@ -44,8 +43,7 @@ test("turnsToRows budgets a long reply by wrapped lines, not turns", () => {
   const clipped = takeLastRows(rows, 4);
   assert.equal(clipped.length, 4);
   assert.equal(clipped.some((row) => row.kind === "speaker" && row.text.trim() === "you"), false);
-  const lastBody = [...clipped].reverse().find((row) => row.kind === "body");
-  assert.ok(lastBody, "clipping a long reply should still keep its last wrapped lines");
+  assert.equal(clipped.at(-1)?.kind, "body");
 });
 
 test("takeLastRows keeps the end of a single overflowing turn", () => {
@@ -141,8 +139,9 @@ test("short user line and wrapped user turn share one left column; assistant sta
   const hi = short.find((row) => row.kind === "body" && row.align === "end");
   const hello = short.find((row) => row.kind === "body" && row.align === "start");
   assert.ok(hi && hello);
-  assert.equal(hi.text, "hi");
-  assert.equal(firstContentCol(hi.text), 0);
+  assert.equal(hi.text.trimStart(), "hi");
+  assert.equal(hi.text.length, 40);
+  assert.equal(firstContentCol(hi.text), 38);
   assert.equal(hello.text, "hello");
   assert.equal(firstContentCol(hello.text), 0);
 
@@ -159,9 +158,13 @@ test("short user line and wrapped user turn share one left column; assistant sta
   assert.ok(userBodies.length > 1, "user turn should wrap onto several lines");
   const starts = userBodies.map((row) => firstContentCol(row.text));
   assert.ok(starts.every((col) => col === starts[0]));
-  assert.equal(starts[0], 0, "lines are left-aligned inside the chip; the chip hugs the right at render");
+  assert.ok((starts[0] ?? -1) > 0);
   const contents = userBodies.map((row) => row.text.trimStart());
   const longest = Math.max(...contents.map((line) => line.length));
+  assert.ok(
+    userBodies.some((row) => row.text.length === 20 && row.text.trimStart().length === longest),
+    "longest user line should meet the right edge",
+  );
   assert.ok(
     userBodies.some((row) => row.text.trimStart().length < longest),
     "shorter wrapped lines stay left-aligned in the block, not independently right-padded",
@@ -188,19 +191,19 @@ test("empty thinking turns are skipped but send-message bodies are kept", () => 
   assert.ok(rows.some((row) => row.kind === "body" && row.text === "visible reply"));
 });
 
-test("user text that fits the chip is a single left-aligned line", () => {
+test("user text that fits the pane is a single right-hugging left-aligned line", () => {
   const rows = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "hello there" }], 40, "Dev");
   const bodies = rows.filter((row) => row.kind === "body");
   assert.equal(bodies.length, 1);
-  assert.equal(bodies[0]?.text, "hello there");
-  assert.equal(firstContentCol(bodies[0]?.text ?? ""), 0);
+  assert.equal(bodies[0]?.text.length, 40);
+  assert.ok(bodies[0]?.text.endsWith("hello there"));
+  assert.ok(bodies[0]?.text.startsWith(" "));
 });
 
-test("only user strings longer than the chip inner width wrap", () => {
-  const inner = wrapWidth(40);
-  const fits = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(inner) }], 40, "Dev");
+test("only user strings longer than the inner width wrap", () => {
+  const fits = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(40) }], 40, "Dev");
   assert.equal(fits.filter((row) => row.kind === "body").length, 1);
-  const wraps = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(inner + 1) }], 40, "Dev");
+  const wraps = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(41) }], 40, "Dev");
   assert.ok(wraps.filter((row) => row.kind === "body").length > 1);
 });
 
@@ -266,7 +269,7 @@ test("image turns render a placeholder; text-only turns do not", () => {
   );
 });
 
-test("1:1 turns are separated by two empty rows; rooms by one; last empty is popped", () => {
+test("layout has no bubble chrome on turns; 1:1 uses two empties, rooms one", () => {
   const oneToOne = turnsToRows(
     [
       { id: "1", role: "user", speaker: "you", text: "hi" },
@@ -277,7 +280,7 @@ test("1:1 turns are separated by two empty rows; rooms by one; last empty is pop
   );
   assert.deepEqual(
     oneToOne.map((row) => row.kind),
-    ["bubbleOpen", "body", "bubbleClose", "empty", "empty", "bubbleOpen", "body", "bubbleClose"],
+    ["body", "empty", "empty", "body"],
   );
 
   const room = turnsToRows(
@@ -294,7 +297,7 @@ test("1:1 turns are separated by two empty rows; rooms by one; last empty is pop
   );
   assert.deepEqual(
     room.map((row) => row.kind),
-    ["speaker", "bubbleOpen", "body", "bubbleClose", "empty", "speaker", "bubbleOpen", "body", "bubbleClose"],
+    ["speaker", "body", "empty", "speaker", "body"],
   );
 });
 

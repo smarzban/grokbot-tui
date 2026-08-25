@@ -126,6 +126,11 @@ test("Shift+Enter, LF without return, and Ctrl+J insert a newline; Enter / CR se
     assert.equal(ctrlJ.draft.text, "hi\n");
     assert.equal(ctrlJ.draft.caret, 3);
   }
+  const kittyCtrlJ = handleComposeKey({}, draft, 40, "[106;5u");
+  assert.equal(kittyCtrlJ.type, "set");
+  if (kittyCtrlJ.type === "set") {
+    assert.equal(kittyCtrlJ.draft.text, "hi\n");
+  }
   const enter = handleComposeKey({ return: true, shift: false }, draft, 40);
   assert.equal(enter.type, "send");
   const cr = handleComposeKey({}, draft, 40, "\r");
