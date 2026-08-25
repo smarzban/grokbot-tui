@@ -1,0 +1,45 @@
+{
+  "name": "grok-bot-tui",
+  "version": "0.1.0",
+  "description": "Unofficial terminal UI for chatting with Grok Bot agents",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "grok-tui": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/cli.tsx",
+    "start:mock": "tsx src/cli.tsx --mock",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "keywords": [
+    "grok-bot",
+    "tui",
+    "ink",
+    "terminal"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://origin.cursor.com/git/smarzban/tmp-07d786a67e747d7d"
+  },
+  "dependencies": {
+    "@adam91holt/grokbot-sdk": "^0.2.0",
+    "dotenv": "^17.4.2",
+    "grok-bot-cli": "^0.2.2",
+    "ink": "^7.1.1",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "@types/react": "^19.2.18",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}

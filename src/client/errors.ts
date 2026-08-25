@@ -1,0 +1,59 @@
+import { GrokBotGatewayError } from "@adam91holt/grokbot-sdk";
+import { errorMessage } from "../redact.js";
+import { HostClientError, type HostErrorKind } from "./types.js";
+
+function codeOf(err: unknown): string | undefined {
+  if (err != null && typeof err === "object" && "code" in err) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  const cause = err instanceof Error ? err.cause : undefined;
+  if (cause != null && typeof cause === "object" && "code" in cause) {
+    const code = (cause as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
+
+export function mapHostError(err: unknown, secret?: string): HostClientError {
+  if (err instanceof HostClientError) return err;
+
+  const message = errorMessage(err, secret);
+  const code = codeOf(err);
+  const lowered = message.toLowerCase();
+
+  let kind: HostErrorKind = "unknown";
+
+  if (err instanceof GrokBotGatewayError) {
+    if (err.command === "discover" || err.status === 401 || err.status === 403) {
+      kind = err.status === 401 || err.status === 403 ? "unauthorized" : "missing-auth";
+    } else if (err.status === 0) {
+      kind = /not found|gateway port|set grokbot_gateway_url/i.test(message)
+        ? "missing-auth"
+        : "host-down";
+    } else if (err.status >= 500) {
+      kind = "host-down";
+    }
+  } else if (
+    code === "ECONNREFUSED" ||
+    code === "ENOTFOUND" ||
+    code === "ECONNRESET" ||
+    code === "ETIMEDOUT" ||
+    code === "UND_ERR_SOCKET" ||
+    /fetch failed|econnrefused|network|socket/i.test(lowered)
+  ) {
+    kind = "host-down";
+  } else if (/unauthorized|401|403|missing.+token|no token|not found.*gateway/i.test(lowered)) {
+    kind = /401|403|unauthorized/i.test(lowered) ? "unauthorized" : "missing-auth";
+  } else if (/aborted|abort/.test(lowered)) {
+    kind = "unknown";
+  }
+
+  return new HostClientError(kind, message);
+}
+
+export const MISSING_AUTH_MESSAGE =
+  "No gateway token. Set SAND_GATEWAY_TOKEN (and GROKBOT_GATEWAY_URL if you are not on the Grok Bot computer), or open the Grok Bot desktop app so grok-bot-cli can use its session.";
+
+export const HOST_DOWN_MESSAGE =
+  "The Grok Bot host is not reachable. Start the host, check the tunnel, or run with --mock.";

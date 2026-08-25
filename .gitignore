@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+gateway.json
+host-secrets.json
+*.log
+.DS_Store
+coverage/
+agent-tools/
