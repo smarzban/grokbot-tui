@@ -1,36 +1,49 @@
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
-import { mergePolledTranscript, shouldPollTranscript } from "./poll.js";
+import { shouldPollTranscript } from "./poll.js";
 
 export type PollChatSnapshot = {
-  turns: ChatTurn[];
-  roster: Agent[];
+  /** Host tail when the transcript fetch succeeded. */
+  history?: ChatTurn[];
+  transcriptFetched: boolean;
+  /** Roster rows when listAgents succeeded. */
+  roster?: Agent[];
+  rosterFetched: boolean;
 };
 
 /** One idle poll cycle: transcript tail (when allowed) plus roster. */
 export async function pollChatSnapshot(input: {
   client: HostClient;
   agentId: string;
-  turns: ChatTurn[];
   statusKind: string;
 }): Promise<PollChatSnapshot> {
-  let turns = input.turns;
+  let history: ChatTurn[] | undefined;
+  let transcriptFetched = false;
+
   if (shouldPollTranscript(input.statusKind)) {
     try {
-      const history = await input.client.getTranscript(input.agentId);
+      const fetched = await input.client.getTranscript(input.agentId);
       if (shouldPollTranscript(input.statusKind)) {
-        turns = mergePolledTranscript(turns, history);
+        history = fetched;
+        transcriptFetched = true;
       }
     } catch {
       // Keep the last good transcript; a single failed poll is not an error overlay.
     }
   }
 
-  let roster: Agent[] = [];
+  let roster: Agent[] | undefined;
+  let rosterFetched = false;
   try {
     roster = await input.client.listAgents();
+    rosterFetched = true;
   } catch {
-    // Keep the last roster; a failed poll is not an error overlay.
+    // Keep the last roster; a single failed poll is not an error overlay.
   }
 
-  return { turns, roster };
+  return {
+    ...(history != null ? { history } : {}),
+    transcriptFetched,
+    ...(roster != null ? { roster } : {}),
+    rosterFetched,
+  };
 }

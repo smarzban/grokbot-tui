@@ -46,7 +46,7 @@ import {
 } from "./mentions.js";
 import { isCtrlKey } from "./keys.js";
 import { answeringIndicator, busyMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
-import { DEFAULT_POLL_MS, shouldPollTranscript } from "./poll.js";
+import { DEFAULT_POLL_MS, mergePolledTranscript, shouldPollTranscript } from "./poll.js";
 import { pollChatSnapshot } from "./chatPoll.js";
 
 type Props = {
@@ -170,8 +170,6 @@ export function Chat({
   const [mentionDismissed, setMentionDismissed] = useState(false);
   const [pollReady, setPollReady] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const turnsRef = useRef(turns);
-  turnsRef.current = turns;
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const statusRef = useRef(status);
@@ -293,17 +291,24 @@ export function Chat({
     };
     const tick = async () => {
       if (cancelled) return;
+      const statusAtStart = statusRef.current.kind;
       const snapshot = await pollChatSnapshot({
         client,
         agentId,
-        turns: turnsRef.current,
-        statusKind: statusRef.current.kind,
+        statusKind: statusAtStart,
       });
       if (cancelled) return;
-      if (shouldPollTranscript(statusRef.current.kind)) {
-        setTurns(snapshot.turns);
+      if (
+        snapshot.transcriptFetched &&
+        snapshot.history &&
+        shouldPollTranscript(statusAtStart) &&
+        shouldPollTranscript(statusRef.current.kind)
+      ) {
+        setTurns((prev) => mergePolledTranscript(prev, snapshot.history!));
       }
-      applyRoster(snapshot.roster);
+      if (snapshot.rosterFetched && snapshot.roster) {
+        applyRoster(snapshot.roster);
+      }
     };
     void tick();
     const id = setInterval(() => {
