@@ -1,10 +1,11 @@
-import { Box, Text, useApp, useInput, useWindowSize } from "ink";
+import { Box, Text, useApp, useInput, useStdout, useWindowSize } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
 import {
   adjustScrollOffset,
+  applyScrollDelta,
   chromeRows,
   composeVisible,
   innerWidth,
@@ -12,6 +13,13 @@ import {
   turnsToRows,
   visibleTranscript,
 } from "./layout.js";
+import {
+  consumeMouseInput,
+  DISABLE_MOUSE,
+  ENABLE_MOUSE,
+  scrollDeltaForButton,
+  WHEEL_LINE_DELTA,
+} from "./mouse.js";
 import { DEFAULT_POLL_MS, shouldPollTranscript, transcriptChanged } from "./poll.js";
 
 type Props = {
@@ -53,6 +61,7 @@ function termSize(columns: number, rows: number): { width: number; height: numbe
 
 export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwitch }: Props) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const { columns, rows } = useWindowSize();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
@@ -96,6 +105,13 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
       abortRef.current?.abort();
     };
   }, [load]);
+
+  useEffect(() => {
+    stdout.write(ENABLE_MOUSE);
+    return () => {
+      stdout.write(DISABLE_MOUSE);
+    };
+  }, [stdout]);
 
   useEffect(() => {
     setScrollOffset((offset) =>
@@ -203,6 +219,24 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
 
   useInput((input, key) => {
     const current = statusRef.current;
+    const { events } = consumeMouseInput(input);
+    if (events.length > 0) {
+      for (const event of events) {
+        if (event.release) continue;
+        const delta = scrollDeltaForButton(event.button);
+        if (delta == null) continue;
+        setScrollOffset((offset) => applyScrollDelta(offset, delta, rowCount, lineBudget));
+      }
+      return;
+    }
+    if (key.upArrow) {
+      setScrollOffset((offset) => applyScrollDelta(offset, WHEEL_LINE_DELTA, rowCount, lineBudget));
+      return;
+    }
+    if (key.downArrow) {
+      setScrollOffset((offset) => applyScrollDelta(offset, -WHEEL_LINE_DELTA, rowCount, lineBudget));
+      return;
+    }
     if (key.escape) {
       if (current.kind === "sending") {
         abortRef.current?.abort();
@@ -225,15 +259,15 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
       return;
     }
     if (key.pageUp || (key.ctrl && input === "u")) {
-      setScrollOffset((offset) => offset + page);
+      setScrollOffset((offset) => applyScrollDelta(offset, page, rowCount, lineBudget));
       return;
     }
     if (key.pageDown || (key.ctrl && input === "d")) {
-      setScrollOffset((offset) => Math.max(0, offset - page));
+      setScrollOffset((offset) => applyScrollDelta(offset, -page, rowCount, lineBudget));
       return;
     }
     if (key.home) {
-      setScrollOffset(Number.MAX_SAFE_INTEGER);
+      setScrollOffset((offset) => applyScrollDelta(offset, Number.MAX_SAFE_INTEGER, rowCount, lineBudget));
       return;
     }
     if (key.end) {
@@ -341,8 +375,8 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
       <Box height={1} overflow="hidden" paddingX={1}>
         <Text dimColor>
           {busy
-            ? "PgUp/Dn scroll  ·  Esc cancel  ·  Ctrl+c quit"
-            : "PgUp/Dn scroll  ·  Enter send  ·  Esc bots  ·  Ctrl+c quit"}
+            ? "wheel/PgUp/Dn scroll  ·  Esc cancel  ·  Ctrl+c quit"
+            : "wheel/PgUp/Dn scroll  ·  Enter send  ·  Esc bots  ·  Ctrl+c quit"}
         </Text>
       </Box>
     </Box>

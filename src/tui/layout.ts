@@ -193,6 +193,16 @@ export function clampScrollOffset(offset: number, rowCount: number, budget: numb
   return Math.min(Math.floor(offset), max);
 }
 
+/** Shift offset by `delta` lines (positive = older / up). Clamped to 0..max. */
+export function applyScrollDelta(
+  offset: number,
+  delta: number,
+  rowCount: number,
+  budget: number,
+): number {
+  return clampScrollOffset(offset + delta, rowCount, budget);
+}
+
 /**
  * Offset is lines from the bottom. 0 means pinned to latest.
  * When new rows append and the user is scrolled up, grow the offset so the

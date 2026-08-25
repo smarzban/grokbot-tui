@@ -15,7 +15,7 @@ Command names and response shapes come from those libraries / the live host. The
 - Opens a framed chat: agent name + idle/waiting in the header, clipped transcript, compose bar at the bottom
 - Sends a message, then **polls until the bot is idle** and shows the last reply (the host does not stream tokens)
 - While idle, refreshes the transcript so messages sent from the Grok Bot app show up without sending from the TUI
-- PageUp / PageDown (and Ctrl+u / Ctrl+d) scroll the clipped history; new messages only pin to the bottom if you were already there
+- PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
 - Images from the host (`user-attachment` / SendMessage `attachment`) show as `[image] filename` on the correct side
 - Switch bots without quitting
 - Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
@@ -57,7 +57,7 @@ Other flags: `--agent NAME` (skip the picker if that bot exists), `--help`.
 | Key | Where | Action |
 | --- | --- | --- |
 | ↑ ↓ / j k, Enter | picker | Move / open |
-| PgUp / PgDn / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll) |
+| PgUp / PgDn / wheel / ↑ ↓ / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll) |
 | Home / End | chat | Jump to oldest / latest |
 | Enter | chat | Send |
 | Esc | chat | Cancel wait, or back to the picker |
