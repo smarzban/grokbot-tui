@@ -5,7 +5,7 @@ import { IMAGE_CELL_ROWS, imagePlaceholder, imagesFromText, localImagePath, merg
 export type TranscriptAlign = "start" | "end";
 
 export type TranscriptRow = {
-  kind: "speaker" | "body" | "image" | "picture" | "empty";
+  kind: "speaker" | "body" | "image" | "picture" | "empty" | "bubbleOpen" | "bubbleClose";
   text: string;
   role?: ChatTurn["role"];
   align: TranscriptAlign;
@@ -24,9 +24,13 @@ export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
   return role === "user" ? "end" : "start";
 }
 
-/** Wrap to the full pane. User turns are then shifted as a block (see alignBlockEnd). */
+/** Horizontal chrome of a round chip: border (1+1) + paddingX (1+1). */
+export const BUBBLE_PAD_X = 1;
+export const BUBBLE_CHROME_X = (1 + BUBBLE_PAD_X) * 2;
+
+/** Wrap inside the chip so the outer bubble still fits the pane. */
 export function wrapWidth(paneWidth: number): number {
-  return Math.max(1, paneWidth);
+  return Math.max(1, paneWidth - BUBBLE_CHROME_X);
 }
 
 /** @deprecated Use wrapWidth. Kept so older tests that imported the 55% helper still typecheck if any remain. */
@@ -215,19 +219,15 @@ export function turnsToRows(
         });
       }
     }
-    if (align === "end") {
-      const padded = alignBlockEnd(
-        pending.map((row) => row.text),
-        paneWidth,
-      );
-      for (let i = 0; i < pending.length; i++) {
-        const row = pending[i];
-        const text = padded[i];
-        if (row && text != null) pending[i] = { ...row, text };
-      }
+    const speakers = pending.filter((row) => row.kind === "speaker");
+    const content = pending.filter((row) => row.kind !== "speaker");
+    rows.push(...speakers);
+    if (content.length > 0) {
+      rows.push({ kind: "bubbleOpen", text: "", role: turn.role, align });
+      rows.push(...content);
+      rows.push({ kind: "bubbleClose", text: "", role: turn.role, align });
     }
-    rows.push(...pending);
-    // 1:1 has no speaker labels, so two blank rows keep turns apart.
+    // 1:1 has no speaker labels, so two blank rows keep chips apart.
     // Rooms already have names — one blank row is enough.
     const gap = ctx.isGroup === true ? 1 : 2;
     for (let g = 0; g < gap; g++) {
@@ -238,6 +238,17 @@ export function turnsToRows(
     rows.pop();
   }
   return rows;
+}
+
+export function isBubbleEdge(kind: TranscriptRow["kind"]): boolean {
+  return kind === "bubbleOpen" || kind === "bubbleClose";
+}
+
+/** Outer width of a round padded chip that wraps `contentWidth` columns of text. */
+export function bubbleOuterWidth(contentWidth: number, paneWidth: number): number {
+  const pane = Math.max(1, paneWidth);
+  const inner = Math.max(1, contentWidth);
+  return Math.min(pane, inner + BUBBLE_CHROME_X);
 }
 
 export function groupTranscriptRows(rows: TranscriptRow[]): TranscriptBlock[] {

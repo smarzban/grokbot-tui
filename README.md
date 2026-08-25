@@ -12,7 +12,7 @@ Command names and response shapes come from those libraries / the live host. The
 ## What v1 does
 
 - Lists your bots and rooms by name (a short id prefix only if two names collide)
-- Opens a framed chat with round corners: agent or room name (rooms also show members), idle/waiting in the header, clipped transcript, compose bar at the bottom. 1:1 chats hide `you` / bot speaker labels (alignment is enough); rooms still show member names.
+- Opens a framed chat with round corners: agent or room name (rooms also show members), idle/waiting in the header, clipped transcript, compose bar at the bottom. Turns are filled gray chips (assistant darker on the left, user lighter on the right). 1:1 chats hide `you` / bot speaker labels; rooms still show member names above the chip.
 - Sends a message. 1:1 chats **poll until the bot is idle** and show the last reply; rooms send on the group id and let idle poll pick up each member’s turn
 - While idle, refreshes the transcript and roster so Grok Bot app messages and `isRunning` answering indicators show up without sending from the TUI
 - PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
