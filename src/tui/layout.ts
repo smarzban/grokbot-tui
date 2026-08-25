@@ -34,11 +34,9 @@ export function userColumnWidth(width: number): number {
   return wrapWidth(width);
 }
 
-/** Pad `text` so it hugs the right edge of `width`. Does not truncate shorter labels. */
+/** Pad a single line so it hugs the right edge of `width`. */
 export function alignEnd(text: string, width: number): string {
-  if (width < 1) return text;
-  if (text.length >= width) return text;
-  return text.padStart(width, " ");
+  return alignBlockEnd([text], width)[0] ?? text;
 }
 
 /**
