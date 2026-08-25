@@ -1,4 +1,5 @@
 import { entriesFromTranscriptPayload, turnsFromTranscriptEntries } from "@adam91holt/grokbot-sdk";
+import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Agent, AgentMember, ChatImage, ChatTurn } from "./types.js";
 
@@ -92,6 +93,10 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+function isFileUrl(value: string): boolean {
+  return /^file:/i.test(value);
+}
+
 function pickString(rec: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = rec[key];
@@ -100,46 +105,88 @@ function pickString(rec: Record<string, unknown>, keys: string[]): string | unde
   return undefined;
 }
 
+function pickNumber(rec: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = rec[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function localPathIfExists(value: string | undefined): string | undefined {
+  if (!value || isHttpUrl(value) || isFileUrl(value)) return undefined;
+  try {
+    if (existsSync(value)) return value;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 /**
- * Build an image ref from documented host fields:
- * `id` / `entryId`, `fileName` / `mime` / `ext` (search-index media rows),
- * `attachmentPaths` / `attachmentNames` (sendPrompt).
- * Never treat query strings as display text.
+ * Build an image ref from host fields:
+ * `file_name` / `file_path` (user-attachment), `fileName` / `attachmentPaths`,
+ * `id` / `entryId` / `mime`, and `url` / `alt` / `width` / `height` on
+ * `message.images[]`. Never treat query strings as display text.
  */
 function imageFromRecord(rec: Record<string, unknown>): ChatImage | undefined {
   const names = stringList(rec.attachmentNames);
   const paths = stringList(rec.attachmentPaths);
-  const fileName = pickString(rec, ["fileName"]) ?? names[0];
+  const fileName = pickString(rec, ["fileName", "file_name"]) ?? names[0];
+  const hostFilePath = pickString(rec, ["file_path"]);
   const mime = pickString(rec, ["mime"]);
   const ext = pickString(rec, ["ext"]);
   const entryId = pickString(rec, ["entryId"]);
   const id = pickString(rec, ["id"]);
+  const width = pickNumber(rec, ["width"]);
+  const height = pickNumber(rec, ["height"]);
   const explicitUrl = pickString(rec, ["url"]);
   const pathOrUrl = paths[0];
   let path: string | undefined;
   let url: string | undefined;
-  let alt = fileName;
+  let alt = fileName ?? pickString(rec, ["alt"]);
   if (pathOrUrl) {
-    if (isHttpUrl(pathOrUrl)) {
+    if (isHttpUrl(pathOrUrl) || isFileUrl(pathOrUrl)) {
       url = pathOrUrl;
     } else {
-      path = pathOrUrl;
+      const existing = localPathIfExists(pathOrUrl);
+      if (existing) path = existing;
+      else if (!hostFilePath) {
+        // CamelCase attachmentPaths that are abs but missing — keep as path
+        // so hydrate can send readAttachmentImage({ path }).
+        path = pathOrUrl;
+      }
       if (!alt) alt = basename(pathOrUrl);
     }
   }
-  if (!url && explicitUrl && isHttpUrl(explicitUrl)) url = explicitUrl;
+  if (!url && explicitUrl && (isHttpUrl(explicitUrl) || isFileUrl(explicitUrl))) url = explicitUrl;
+  const existingHost = localPathIfExists(hostFilePath);
+  if (existingHost && !path) path = existingHost;
   if (!alt && ext && !mime) {
     alt = `image.${ext.replace(/^\./, "")}`;
   }
-  if (!alt && !path && !url && !mime && !entryId && !id && names.length === 0 && paths.length === 0) {
+  if (
+    !alt &&
+    !path &&
+    !url &&
+    !mime &&
+    !entryId &&
+    !id &&
+    !hostFilePath &&
+    names.length === 0 &&
+    paths.length === 0
+  ) {
     return undefined;
   }
   return {
     ...(alt ? { alt } : {}),
     ...(fileName ? { fileName } : {}),
     ...(path ? { path } : {}),
+    ...(hostFilePath ? { file_path: hostFilePath } : {}),
     ...(url ? { url } : {}),
     ...(mime ? { mime } : {}),
+    ...(width != null ? { width } : {}),
+    ...(height != null ? { height } : {}),
     ...(entryId ? { entryId } : {}),
     ...(id ? { id } : {}),
     ...(names.length ? { attachmentNames: names } : {}),
@@ -154,8 +201,11 @@ function mergeChatImage(base: ChatImage | undefined, extra: ChatImage | undefine
     ...(extra.alt ? { alt: extra.alt } : base.alt ? { alt: base.alt } : {}),
     ...(extra.fileName ? { fileName: extra.fileName } : base.fileName ? { fileName: base.fileName } : {}),
     ...(extra.path ? { path: extra.path } : base.path ? { path: base.path } : {}),
+    ...(extra.file_path ? { file_path: extra.file_path } : base.file_path ? { file_path: base.file_path } : {}),
     ...(extra.url ? { url: extra.url } : base.url ? { url: base.url } : {}),
     ...(extra.mime ? { mime: extra.mime } : base.mime ? { mime: base.mime } : {}),
+    ...(extra.width != null ? { width: extra.width } : base.width != null ? { width: base.width } : {}),
+    ...(extra.height != null ? { height: extra.height } : base.height != null ? { height: base.height } : {}),
     ...(extra.entryId ? { entryId: extra.entryId } : base.entryId ? { entryId: base.entryId } : {}),
     ...(extra.id ? { id: extra.id } : base.id ? { id: base.id } : {}),
     ...(extra.attachmentNames?.length
@@ -187,6 +237,17 @@ function recordsForImages(entry: Record<string, unknown>): Record<string, unknow
   return records;
 }
 
+function imagesFromMessageImages(images: unknown): ChatImage[] {
+  if (!Array.isArray(images)) return [];
+  const out: ChatImage[] = [];
+  for (const item of images) {
+    if (!isRecord(item)) continue;
+    const parsed = imageFromRecord(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
 function imagesFromContentParts(content: unknown): ChatImage[] {
   if (!Array.isArray(content)) return [];
   const images: ChatImage[] = [];
@@ -199,9 +260,11 @@ function imagesFromContentParts(content: unknown): ChatImage[] {
 }
 
 /**
- * Host chat images arrive as store kind `user-attachment` or as
- * SendMessage `{ type: "attachment" }` (see grokbot-sdk SEND_MESSAGE_TYPES).
- * SDK `turnsFromTranscriptEntries` drops both because it only keeps type=text.
+ * Host chat images arrive as:
+ * - store kind `user-attachment` (`file_name` / `file_path`, not camelCase)
+ * - SendMessage `{ type: "attachment" }` (legacy)
+ * - SendMessage `{ type: "text", images: [{ url, alt, width, height }] }`
+ * SDK `turnsFromTranscriptEntries` drops non-text parts.
  */
 export function imagesFromHostEntry(value: unknown): ChatImage[] {
   const entry = unwrapEntry(value);
@@ -221,6 +284,10 @@ export function imagesFromHostEntry(value: unknown): ChatImage[] {
   if (nested) images.push(...imagesFromContentParts(nested.content));
   if (message) images.push(...imagesFromContentParts(message.content));
 
+  images.push(...imagesFromMessageImages(entry.images));
+  if (nested) images.push(...imagesFromMessageImages(nested.images));
+  if (message) images.push(...imagesFromMessageImages(message.images));
+
   if (userAttachment || sendAttachment) {
     let found: ChatImage | undefined;
     for (const rec of recordsForImages(entry)) {
@@ -235,6 +302,7 @@ export function imagesFromHostEntry(value: unknown): ChatImage[] {
   return images.map((image) => ({
     ...image,
     ...(image.entryId ? {} : { entryId: wrapperId }),
+    ...(image.id ? {} : { id: wrapperId }),
   }));
 }
 

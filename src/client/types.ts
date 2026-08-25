@@ -24,13 +24,23 @@ export const DEFAULT_TRANSCRIPT_LIMIT = 500;
 export type ChatImage = {
   /** Filename or alt shown in the TUI. Never a token-bearing URL. */
   alt?: string;
-  /** Host `fileName` when the entry carried one (may match `alt`). */
+  /** Host `fileName` / `file_name` when the entry carried one (may match `alt`). */
   fileName?: string;
-  /** Local filesystem path when the host gave one or we cached downloaded bytes. */
+  /**
+   * Local filesystem path Kitty can paint: an existing file, or a temp file
+   * we cached after `readAttachmentImage`.
+   */
   path?: string;
-  /** https URL from attachmentPaths. Do not print; may need session headers to fetch. */
+  /**
+   * Host-internal path from `file_path`. Often `/home/box/sand-data/...` and
+   * missing on the Mac disk — used as `readAttachmentImage({ path })`.
+   */
+  file_path?: string;
+  /** `file://` or `https://` from the entry. Do not print; never send file:// as `path`. */
   url?: string;
   mime?: string;
+  width?: number;
+  height?: number;
   /** Host store / transcript entry id when the row carried `id` or `entryId`. */
   entryId?: string;
   /** Host message/attachment `id` when distinct from the entry id. */

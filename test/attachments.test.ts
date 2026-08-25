@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
+  attachmentReadPaths,
+  decodeAttachmentResult,
   fetchBytesWithHeaders,
   hydrateTurnImages,
   resetAttachmentCacheForTests,
@@ -14,6 +17,7 @@ const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
+const TINY_DATA_URL = `data:image/png;base64,${TINY_PNG.toString("base64")}`;
 
 function imageTurn(image: ChatImage): ChatTurn[] {
   return [
@@ -27,26 +31,34 @@ function imageTurn(image: ChatImage): ChatTurn[] {
   ];
 }
 
-test("hydrateTurnImages writes gateway bytes to a cache file", async () => {
+test("decodeAttachmentResult reads host dataUrl", () => {
+  const decoded = decodeAttachmentResult({ dataUrl: TINY_DATA_URL, width: 1, height: 1 });
+  assert.ok(decoded?.bytes);
+  assert.deepEqual(decoded.bytes, TINY_PNG);
+});
+
+test("hydrateTurnImages calls readAttachmentImage with { path } from file_path", async () => {
   resetAttachmentCacheForTests();
   const cache = mkdtempSync(join(tmpdir(), "grok-tui-att-"));
+  const hostPath = "/home/box/sand-data/shot.png";
   let calls = 0;
   const turns = await hydrateTurnImages(
     "agent-ada",
     imageTurn({
-      alt: "shot.png",
-      fileName: "shot.png",
-      mime: "image/png",
-      entryId: "entry-9",
+      alt: "Screenshot.png",
+      fileName: "Screenshot.png",
+      file_path: hostPath,
+      id: "t32ua0",
     }),
     {
       cacheDir: cache,
       call: async (command, body) => {
         calls += 1;
         assert.equal(command, "readAttachmentImage");
-        assert.equal((body as { fileName?: string }).fileName, "shot.png");
-        assert.equal((body as { agentId?: string }).agentId, "agent-ada");
-        return { bytes: TINY_PNG.toString("base64") };
+        assert.equal((body as { path?: string }).path, hostPath);
+        assert.equal("fileName" in body, false);
+        assert.ok(!String((body as { path?: string }).path).startsWith("file:"));
+        return { dataUrl: TINY_DATA_URL, width: 8, height: 8 };
       },
     },
   );
@@ -66,76 +78,33 @@ test("hydrateTurnImages writes gateway bytes to a cache file", async () => {
   assert.equal(calls, 0, "cached path skips gateway on the next poll");
 });
 
-test("hydrateTurnImages learns the body that worked and retries that first", async () => {
+test("hydrateTurnImages converts file:// url with fileURLToPath, never sends file://", async () => {
   resetAttachmentCacheForTests();
-  const cache = mkdtempSync(join(tmpdir(), "grok-tui-learn-"));
-  const seen: Array<{ command: string; body: Record<string, unknown> }> = [];
-  await hydrateTurnImages(
-    "bot",
-    imageTurn({
-      alt: "a.png",
-      fileName: "a.png",
-      id: "att-1",
-    }),
-    {
-      cacheDir: cache,
-      call: async (command, body) => {
-        seen.push({ command, body: body as Record<string, unknown> });
-        if ((body as { id?: string }).id === "att-1") {
-          return { data: TINY_PNG.toString("base64") };
-        }
-        throw new Error("nope");
-      },
-    },
-  );
-  assert.ok(seen.length >= 2);
-  seen.length = 0;
-  await hydrateTurnImages(
-    "bot",
-    imageTurn({
-      alt: "b.png",
-      fileName: "b.png",
-      id: "att-2",
-    }),
-    {
-      cacheDir: cache,
-      call: async (command, body) => {
-        seen.push({ command, body: body as Record<string, unknown> });
-        if ((body as { id?: string }).id === "att-2") {
-          return { data: TINY_PNG.toString("base64") };
-        }
-        throw new Error("should have used learned id body first");
-      },
-    },
-  );
-  assert.equal(seen.length, 1);
-  assert.equal(seen[0]?.body.id, "att-2");
-  assert.equal(seen[0]?.body.agentId, "bot");
-});
+  const cache = mkdtempSync(join(tmpdir(), "grok-tui-fileurl-"));
+  const fileUrl = "file:///home/box/sand-data/cat.png";
+  const expected = fileURLToPath(fileUrl);
+  assert.equal(expected, "/home/box/sand-data/cat.png");
+  assert.deepEqual(attachmentReadPaths({ url: fileUrl, alt: "cat" }), [expected]);
 
-test("hydrateTurnImages falls back to readAttachmentChunk", async () => {
-  resetAttachmentCacheForTests();
-  const cache = mkdtempSync(join(tmpdir(), "grok-tui-chunk-"));
-  const commands: string[] = [];
   const turns = await hydrateTurnImages(
     "bot",
-    imageTurn({ alt: "c.png", fileName: "c.png", entryId: "e1" }),
+    imageTurn({ alt: "cat", url: fileUrl, width: 32, height: 32 }),
     {
       cacheDir: cache,
       call: async (command, body) => {
-        commands.push(command);
-        if (command === "readAttachmentImage") throw new Error("missing");
-        assert.equal(command, "readAttachmentChunk");
-        assert.equal((body as { offset?: number }).offset, 0);
-        return TINY_PNG.toString("base64");
+        assert.equal(command, "readAttachmentImage");
+        const path = (body as { path?: string }).path;
+        assert.equal(path, expected);
+        assert.ok(path && !path.startsWith("file:"));
+        return { dataUrl: TINY_DATA_URL, width: 32, height: 32 };
       },
     },
   );
   assert.ok(turns[0]?.images?.[0]?.path);
-  assert.ok(commands.includes("readAttachmentChunk"));
+  assert.deepEqual(readFileSync(turns[0]!.images![0]!.path!), TINY_PNG);
 });
 
-test("hydrateTurnImages fetches https url when gateway has no bytes", async () => {
+test("hydrateTurnImages fetches https url when there is no host path", async () => {
   resetAttachmentCacheForTests();
   const cache = mkdtempSync(join(tmpdir(), "grok-tui-url-"));
   const original = globalThis.fetch;

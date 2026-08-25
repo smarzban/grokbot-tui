@@ -177,11 +177,12 @@ test("desktop getTranscript writes a local file from readAttachmentImage", async
       return json(200, {
         entries: [
           {
-            id: "entry-photo",
+            id: "t32ua0",
             kind: "user-attachment",
-            fileName: "app.png",
-            mime: "image/png",
-            attachmentPaths: ["https://files.example/app.png"],
+            file_name: "app.png",
+            file_path: "/home/box/sand-data/app.png",
+            width: 8,
+            height: 8,
             timestampMs: 1,
           },
         ],
@@ -190,20 +191,16 @@ test("desktop getTranscript writes a local file from readAttachmentImage", async
     if (command === "readAttachmentImage") {
       imageCalls += 1;
       const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
-      assert.equal(body.agentId, ADA_ID);
-      assert.ok(
-        body.fileName === "app.png" ||
-          body.id === "entry-photo" ||
-          body.entryId === "entry-photo" ||
-          (Array.isArray(body.attachmentPaths) && body.attachmentPaths.length > 0),
-      );
-      return json(200, { bytes: png.toString("base64") });
+      assert.equal(body.path, "/home/box/sand-data/app.png");
+      assert.ok(!String(body.path).startsWith("file:"));
+      return json(200, { dataUrl: `data:image/png;base64,${png.toString("base64")}`, width: 8, height: 8 });
     }
     return json(404, { error: "unknown command" });
   };
   const turns = await withFetch(impl, () => desktopClient().getTranscript(ADA_ID));
   const image = turns[0]?.images?.[0];
   assert.equal(image?.fileName, "app.png");
+  assert.equal(image?.file_path, "/home/box/sand-data/app.png");
   assert.ok(image?.path);
   const { readFileSync, existsSync } = await import("node:fs");
   assert.equal(existsSync(image.path), true);

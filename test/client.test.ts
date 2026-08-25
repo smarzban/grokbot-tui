@@ -327,6 +327,69 @@ test("transcript parser keeps group send-message author id and name", () => {
   assert.equal(turns[0]?.text, "from the room");
 });
 
+test("transcript parser keeps snake_case user-attachment file_name and file_path", () => {
+  const turns = turnsFromHostTranscript({
+    entries: [
+      {
+        kind: "user-attachment",
+        id: "t32ua0",
+        file_path: "/home/box/sand-data/Screenshot 2026-08-25 at 11.22.58 AM.png",
+        file_name: "Screenshot 2026-08-25 at 11.22.58 AM.png",
+        width: 1200,
+        height: 800,
+        byteSize: 4096,
+        batchId: "b1",
+        clientNonce: "n1",
+        timestampMs: 1,
+      },
+    ],
+  });
+  const image = turns[0]?.images?.[0];
+  assert.equal(turns[0]?.role, "user");
+  assert.equal(image?.fileName, "Screenshot 2026-08-25 at 11.22.58 AM.png");
+  assert.equal(image?.alt, "Screenshot 2026-08-25 at 11.22.58 AM.png");
+  assert.equal(image?.file_path, "/home/box/sand-data/Screenshot 2026-08-25 at 11.22.58 AM.png");
+  assert.equal(image?.path, undefined);
+  assert.equal(image?.id, "t32ua0");
+  assert.equal(image?.width, 1200);
+  assert.equal(image?.height, 800);
+  assert.equal(image?.url, undefined);
+});
+
+test("transcript parser keeps send-message message.images file:// url", () => {
+  const turns = turnsFromHostTranscript({
+    entries: [
+      {
+        kind: "send-message",
+        id: "t33s1",
+        message: {
+          type: "text",
+          content: "here's the cat",
+          images: [
+            {
+              url: "file:///home/box/sand-data/cat.png",
+              alt: "cat",
+              width: 64,
+              height: 64,
+            },
+          ],
+        },
+        timestampMs: 2,
+      },
+    ],
+  });
+  const turn = turns.find((row) => row.images?.some((image) => image.alt === "cat"));
+  assert.ok(turn);
+  assert.equal(turn.text, "here's the cat");
+  const image = turn.images?.[0];
+  assert.equal(image?.url, "file:///home/box/sand-data/cat.png");
+  assert.equal(image?.alt, "cat");
+  assert.equal(image?.width, 64);
+  assert.equal(image?.height, 64);
+  assert.equal(image?.path, undefined);
+  assert.ok(!image?.path?.startsWith("file:"));
+});
+
 test("transcript parser keeps user-attachment and send-message attachment", () => {
   const turns = turnsFromHostTranscript({
     entries: [
