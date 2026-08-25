@@ -64,14 +64,9 @@ async function main(argv: string[]): Promise<void> {
     </InkPictureProvider>,
     {
       alternateScreen: true,
-      // Ghostty speaks the Kitty keyboard protocol. Flag 1 (disambiguate)
-      // is enough for Shift+Enter. Super/Command has no legacy encoding, so
-      // we also need all-keys-as-escape-codes (8) plus associated text (16)
-      // so printable keys still arrive via `keypress.text`.
-      kittyKeyboard: {
-        mode: "enabled",
-        flags: ["disambiguateEscapeCodes", "reportAllKeysAsEscapeCodes", "reportAssociatedText"],
-      },
+      // Disambiguate only: enough for Shift+Enter on Ghostty. Do not enable
+      // reportAllKeysAsEscapeCodes — Ink 7 leaks CSI-u into the compose box.
+      kittyKeyboard: { mode: "enabled", flags: ["disambiguateEscapeCodes"] },
     },
   );
 }

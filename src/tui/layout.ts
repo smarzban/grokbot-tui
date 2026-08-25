@@ -5,7 +5,7 @@ import { IMAGE_CELL_ROWS, imagePlaceholder, imagesFromText, localImagePath, merg
 export type TranscriptAlign = "start" | "end";
 
 export type TranscriptRow = {
-  kind: "speaker" | "body" | "image" | "picture" | "empty" | "bubbleOpen" | "bubbleClose";
+  kind: "speaker" | "body" | "image" | "picture" | "empty";
   text: string;
   role?: ChatTurn["role"];
   align: TranscriptAlign;
@@ -24,13 +24,9 @@ export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
   return role === "user" ? "end" : "start";
 }
 
-/** Horizontal chrome of a round bubble: border (1+1) + paddingX (1+1). */
-export const BUBBLE_PAD_X = 1;
-export const BUBBLE_CHROME_X = (1 + BUBBLE_PAD_X) * 2;
-
-/** Wrap inside the bubble. User turns are shifted as a block at render time. */
+/** Wrap to the full pane. User turns are then shifted as a block (see alignBlockEnd). */
 export function wrapWidth(paneWidth: number): number {
-  return Math.max(1, paneWidth - BUBBLE_CHROME_X);
+  return Math.max(1, paneWidth);
 }
 
 /** @deprecated Use wrapWidth. Kept so older tests that imported the 55% helper still typecheck if any remain. */
@@ -44,10 +40,8 @@ export function alignEnd(text: string, width: number): string {
 }
 
 /**
- * iMessage-style user bubble: every line keeps its own left edge, and the
+ * iMessage-style user block: every line keeps its own left edge, and the
  * block as a whole is shifted so the longest line meets `width`.
- * Chat bubbles use this for the inner text block; the Box is then placed
- * with flex-end so the bubble hugs the right of the pane.
  */
 export function alignBlockEnd(lines: string[], width: number): string[] {
   if (width < 1 || lines.length === 0) return lines;
@@ -221,15 +215,19 @@ export function turnsToRows(
         });
       }
     }
-    const speakers = pending.filter((row) => row.kind === "speaker");
-    const content = pending.filter((row) => row.kind !== "speaker");
-    rows.push(...speakers);
-    if (content.length > 0) {
-      rows.push({ kind: "bubbleOpen", text: "", role: turn.role, align });
-      rows.push(...content);
-      rows.push({ kind: "bubbleClose", text: "", role: turn.role, align });
+    if (align === "end") {
+      const padded = alignBlockEnd(
+        pending.map((row) => row.text),
+        paneWidth,
+      );
+      for (let i = 0; i < pending.length; i++) {
+        const row = pending[i];
+        const text = padded[i];
+        if (row && text != null) pending[i] = { ...row, text };
+      }
     }
-    // 1:1 has no speaker labels, so two blank rows keep bubbles apart.
+    rows.push(...pending);
+    // 1:1 has no speaker labels, so two blank rows keep turns apart.
     // Rooms already have names — one blank row is enough.
     const gap = ctx.isGroup === true ? 1 : 2;
     for (let g = 0; g < gap; g++) {
@@ -240,17 +238,6 @@ export function turnsToRows(
     rows.pop();
   }
   return rows;
-}
-
-export function isBubbleEdge(kind: TranscriptRow["kind"]): boolean {
-  return kind === "bubbleOpen" || kind === "bubbleClose";
-}
-
-/** Outer width of a round padded bubble that wraps `contentWidth` columns of text. */
-export function bubbleOuterWidth(contentWidth: number, paneWidth: number): number {
-  const pane = Math.max(1, paneWidth);
-  const inner = Math.max(1, contentWidth);
-  return Math.min(pane, inner + BUBBLE_CHROME_X);
 }
 
 export function groupTranscriptRows(rows: TranscriptRow[]): TranscriptBlock[] {
