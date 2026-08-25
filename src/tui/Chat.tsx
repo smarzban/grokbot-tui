@@ -5,11 +5,10 @@ import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
 import {
   composeInnerHeight,
-  deleteBackward,
-  deleteForward,
+  FOOTER_HINT,
+  handleComposeKey,
   insertAt,
   layoutCompose,
-  moveCaret,
   splitLineAtCaret,
   visibleComposeWindow,
 } from "./compose.js";
@@ -407,7 +406,7 @@ export function Chat({
         setMentionIndex((index) => wrapMentionIndex(index, mentionMatches.length, 1));
         return;
       }
-      if (key.tab || key.return) {
+      if (key.tab || (key.return && !key.shift)) {
         const pick =
           mentionMatches.length === 1 ? mentionMatches[0] : mentionMatches[mentionIndex] ?? mentionMatches[0];
         if (pick) setDraft((value) => completeMention(value.text, pick, value.caret));
@@ -415,14 +414,6 @@ export function Chat({
       }
     }
     if (key.tab) return;
-    if (key.upArrow) {
-      setScrollOffset((offset) => applyScrollDelta(offset, WHEEL_LINE_DELTA, rowCount, lineBudget));
-      return;
-    }
-    if (key.downArrow) {
-      setScrollOffset((offset) => applyScrollDelta(offset, -WHEEL_LINE_DELTA, rowCount, lineBudget));
-      return;
-    }
     if (key.escape) {
       if (current.kind === "sending") {
         abortRef.current?.abort();
@@ -460,12 +451,21 @@ export function Chat({
       setScrollOffset(0);
       return;
     }
-    if (key.leftArrow) {
-      setDraft((value) => ({ text: value.text, caret: moveCaret(value.caret, value.text.length, -1) }));
+    const cmd = handleComposeKey(key, draftRef.current, inner);
+    if (cmd.type === "scrollTranscript") {
+      const delta = cmd.dir === "up" ? WHEEL_LINE_DELTA : -WHEEL_LINE_DELTA;
+      setScrollOffset((offset) => applyScrollDelta(offset, delta, rowCount, lineBudget));
       return;
     }
-    if (key.rightArrow) {
-      setDraft((value) => ({ text: value.text, caret: moveCaret(value.caret, value.text.length, 1) }));
+    if (cmd.type === "set") {
+      const busyEdit = current.kind === "sending" || current.kind === "loading";
+      if (busyEdit && cmd.draft.text !== draftRef.current.text) return;
+      setDraft(cmd.draft);
+      return;
+    }
+    if (cmd.type === "send") {
+      if (current.kind === "sending" || current.kind === "loading") return;
+      void send(draftRef.current.text);
       return;
     }
     if (key.ctrl && input === "a") {
@@ -479,19 +479,7 @@ export function Chat({
     if (current.kind === "sending" || current.kind === "loading") {
       return;
     }
-    if (key.return) {
-      void send(draftRef.current.text);
-      return;
-    }
-    if (key.backspace) {
-      setDraft((value) => deleteBackward(value.text, value.caret));
-      return;
-    }
-    if (key.delete) {
-      setDraft((value) => deleteForward(value.text, value.caret));
-      return;
-    }
-    if (key.ctrl || key.meta) return;
+    if (key.ctrl || key.meta || key.super) return;
     const chunk = printableChunk(input);
     if (chunk) setDraft((value) => insertAt(value.text, value.caret, chunk));
   });
@@ -507,7 +495,7 @@ export function Chat({
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
       <Box
-        borderStyle="single"
+        borderStyle="round"
         borderColor="cyan"
         paddingX={1}
         height={3}
@@ -530,7 +518,7 @@ export function Chat({
 
       <Box
         flexDirection="column"
-        borderStyle="single"
+        borderStyle="round"
         borderColor="gray"
         paddingX={1}
         height={transcriptH}
@@ -568,7 +556,7 @@ export function Chat({
 
       <Box
         flexDirection="column"
-        borderStyle="single"
+        borderStyle="round"
         borderColor={busy ? "yellow" : "cyan"}
         paddingX={1}
         height={composeInner + 2}
@@ -596,13 +584,7 @@ export function Chat({
       </Box>
 
       <Box height={1} overflow="hidden" paddingX={1}>
-        <Text dimColor>
-          {busy
-            ? "wheel/PgUp/Dn scroll  ·  Esc cancel  ·  Ctrl+c quit"
-            : menuOpen
-              ? "Tab/Enter insert  ·  ↑↓  ·  Esc close"
-              : "←→ caret  ·  Ctrl+a/e  ·  Enter send  ·  Esc list  ·  Ctrl+c quit"}
-        </Text>
+        <Text dimColor>{FOOTER_HINT}</Text>
       </Box>
     </Box>
   );

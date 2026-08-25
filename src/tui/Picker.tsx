@@ -62,14 +62,14 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
 
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
-      <Box borderStyle="single" borderColor="cyan" paddingX={1} height={3} overflow="hidden">
+      <Box borderStyle="round" borderColor="cyan" paddingX={1} height={3} overflow="hidden">
         <Text bold color="cyan">
           Pick a bot or room
         </Text>
       </Box>
       <Box
         flexDirection="column"
-        borderStyle="single"
+        borderStyle="round"
         borderColor="gray"
         paddingX={1}
         height={listHeight}
@@ -98,7 +98,7 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
           })
         )}
       </Box>
-      <Box borderStyle="single" borderColor="gray" paddingX={1} height={3} overflow="hidden">
+      <Box borderStyle="round" borderColor="gray" paddingX={1} height={3} overflow="hidden">
         <Text dimColor>↑↓ / j k move  ·  Enter open  ·  r refresh  ·  q quit</Text>
       </Box>
     </Box>

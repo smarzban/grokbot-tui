@@ -177,10 +177,10 @@ test("desktop getTranscript writes a local file from readAttachmentImage", async
       return json(200, {
         entries: [
           {
-            id: "t32ua0",
+            id: "t-ui-pass-ua0",
             kind: "user-attachment",
-            file_name: "app.png",
-            file_path: "/home/box/sand-data/app.png",
+            file_name: "ui-pass.png",
+            file_path: "/home/box/sand-data/ui-pass.png",
             width: 8,
             height: 8,
             timestampMs: 1,
@@ -191,7 +191,7 @@ test("desktop getTranscript writes a local file from readAttachmentImage", async
     if (command === "readAttachmentImage") {
       imageCalls += 1;
       const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
-      assert.equal(body.path, "/home/box/sand-data/app.png");
+      assert.equal(body.path, "/home/box/sand-data/ui-pass.png");
       assert.ok(!String(body.path).startsWith("file:"));
       return json(200, { dataUrl: `data:image/png;base64,${png.toString("base64")}`, width: 8, height: 8 });
     }
@@ -199,8 +199,8 @@ test("desktop getTranscript writes a local file from readAttachmentImage", async
   };
   const turns = await withFetch(impl, () => desktopClient().getTranscript(ADA_ID));
   const image = turns[0]?.images?.[0];
-  assert.equal(image?.fileName, "app.png");
-  assert.equal(image?.file_path, "/home/box/sand-data/app.png");
+  assert.equal(image?.fileName, "ui-pass.png");
+  assert.equal(image?.file_path, "/home/box/sand-data/ui-pass.png");
   assert.ok(image?.path);
   const { readFileSync, existsSync } = await import("node:fs");
   assert.equal(existsSync(image.path), true);

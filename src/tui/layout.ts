@@ -157,13 +157,15 @@ export function turnsToRows(
   for (const turn of turns) {
     if (!isVisibleChatTurn(turn)) continue;
     const align = turnAlign(turn.role);
-    const label = speakerLabel(turn, ctx);
-    rows.push({
-      kind: "speaker",
-      text: paint(label, align, paneWidth),
-      role: turn.role,
-      align,
-    });
+    if (ctx.isGroup === true) {
+      const label = speakerLabel(turn, ctx);
+      rows.push({
+        kind: "speaker",
+        text: paint(label, align, paneWidth),
+        role: turn.role,
+        align,
+      });
+    }
     const extracted = imagesFromText(turn.text);
     const bodyText = extracted.text;
     const images = mergeImages(turn.images ?? [], extracted.images);

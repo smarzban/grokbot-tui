@@ -55,14 +55,14 @@ export function ErrorScreen({ kind, message, onRetry }: Props) {
 
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
-      <Box borderStyle="single" borderColor="red" paddingX={1} height={3} overflow="hidden">
+      <Box borderStyle="round" borderColor="red" paddingX={1} height={3} overflow="hidden">
         <Text color="red" bold>
           {errorTitle(kind)}
         </Text>
       </Box>
       <Box
         flexDirection="column"
-        borderStyle="single"
+        borderStyle="round"
         borderColor="gray"
         paddingX={1}
         flexGrow={1}
@@ -73,7 +73,7 @@ export function ErrorScreen({ kind, message, onRetry }: Props) {
           <Text dimColor>{errorHint(kind)}</Text>
         </Box>
       </Box>
-      <Box borderStyle="single" borderColor="gray" paddingX={1} height={3} overflow="hidden">
+      <Box borderStyle="round" borderColor="gray" paddingX={1} height={3} overflow="hidden">
         <Text dimColor>r retry  ·  q quit</Text>
       </Box>
     </Box>

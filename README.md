@@ -12,7 +12,7 @@ Command names and response shapes come from those libraries / the live host. The
 ## What v1 does
 
 - Lists your bots and rooms by name (a short id prefix only if two names collide)
-- Opens a framed chat: agent or room name (rooms also show members), idle/waiting in the header, clipped transcript, compose bar at the bottom
+- Opens a framed chat with round corners: agent or room name (rooms also show members), idle/waiting in the header, clipped transcript, compose bar at the bottom. 1:1 chats hide `you` / bot speaker labels (alignment is enough); rooms still show member names.
 - Sends a message. 1:1 chats **poll until the bot is idle** and show the last reply; rooms send on the group id and let idle poll pick up each member’s turn
 - While idle, refreshes the transcript and roster so Grok Bot app messages and `isRunning` answering indicators show up without sending from the TUI
 - PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
@@ -58,9 +58,9 @@ Other flags: `--agent NAME` (skip the picker if that bot or room exists), `--hel
 | Key | Where | Action |
 | --- | --- | --- |
 | ↑ ↓ / j k, Enter | picker | Move / open |
-| PgUp / PgDn / wheel / ↑ ↓ / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll) |
-| Home / End | chat | Jump to oldest / latest |
-| ← → / Ctrl+a / Ctrl+e | chat compose | Move the caret; Backspace/Delete edit at the caret; long drafts wrap |
+| PgUp / PgDn / wheel / Home / End / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll). ↑ ↓ scroll only while the compose draft is a single line |
+| ← → / Ctrl+a / Ctrl+e | chat compose | Move the caret (Ctrl+a/e = whole draft). Cmd+← / Cmd+→ = current line. Backspace/Delete edit at the caret |
+| Shift+Enter | chat compose | Insert a newline. Enter (no Shift) sends. Cmd+Delete / Cmd+Backspace clears the draft. Long drafts wrap at word boundaries |
 | Tab / Enter / ↑ ↓ / Esc | chat mention menu | Complete, move, or close (does not send or leave the room). ← → move the caret and close the menu if they leave the `@token` |
 | Esc | chat | Cancel wait, or back to the picker |
 | Ctrl+b | chat | Switch bot / room |

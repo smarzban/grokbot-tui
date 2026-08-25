@@ -35,8 +35,8 @@ test("turnsToRows budgets a long reply by wrapped lines, not turns", () => {
     },
   ];
   const rows = turnsToRows(turns, 12, "Dev");
-  const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text.trim());
-  assert.deepEqual(speakers, ["you", "Dev"]);
+  const speakers = rows.filter((row) => row.kind === "speaker");
+  assert.equal(speakers.length, 0, "1:1 chats hide you/bot speaker labels");
   const body = rows.filter((row) => row.kind === "body");
   assert.ok(body.length > 1, "long assistant text should wrap onto several lines");
   const clipped = takeLastRows(rows, 4);
@@ -92,13 +92,13 @@ test("transcript inner height leaves room for chrome", () => {
   assert.ok(transcriptInnerHeight(24, 5) < transcriptInnerHeight(24, 1));
 });
 
-test("assistant send-message turns are labeled with the agent name", () => {
+test("assistant send-message turns keep the body without a 1:1 speaker label", () => {
   const turns: ChatTurn[] = [
     { id: "1", role: "assistant", speaker: "send-message", text: "hello from the bot" },
   ];
   const rows = turnsToRows(turns, 40, "Dev");
-  const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text);
-  assert.deepEqual(speakers, ["Dev"]);
+  const speakers = rows.filter((row) => row.kind === "speaker");
+  assert.equal(speakers.length, 0);
   assert.equal(
     rows.some((row) => /send-message|SendMessage|thinking/i.test(row.text)),
     false,
@@ -116,9 +116,10 @@ test("user rows align end and assistant rows align start", () => {
   const bot = rows.filter((row) => row.role === "assistant" && row.kind !== "empty");
   assert.ok(user.length > 0 && user.every((row) => row.align === "end"));
   assert.ok(bot.length > 0 && bot.every((row) => row.align === "start"));
-  assert.equal(bot.find((row) => row.kind === "speaker")?.text, "Dev");
-  assert.equal(user.find((row) => row.kind === "speaker")?.text.trim(), "you");
-  assert.ok((user.find((row) => row.kind === "speaker")?.text ?? "").startsWith(" "));
+  assert.equal(
+    rows.some((row) => row.kind === "speaker"),
+    false,
+  );
 });
 
 test("short user lines hug the right edge via padStart", () => {
@@ -127,18 +128,14 @@ test("short user lines hug the right edge via padStart", () => {
     { id: "2", role: "assistant", speaker: "send-message", text: "hello" },
   ];
   const rows = turnsToRows(turns, 40, "Dev");
-  const you = rows.find((row) => row.kind === "speaker" && row.align === "end");
   const hi = rows.find((row) => row.kind === "body" && row.align === "end");
-  const dev = rows.find((row) => row.kind === "speaker" && row.align === "start");
-  assert.ok(you && hi && dev);
-  assert.equal(you.text.length, 40);
-  assert.ok(you.text.startsWith(" "));
-  assert.ok(you.text.endsWith("you"));
+  const hello = rows.find((row) => row.kind === "body" && row.align === "start");
+  assert.ok(hi && hello);
   assert.equal(hi.text.length, 40);
   assert.ok(hi.text.startsWith(" "));
   assert.ok(hi.text.endsWith("hi"));
-  assert.equal(dev.text, "Dev");
-  assert.equal(dev.text.startsWith(" "), false);
+  assert.equal(hello.text, "hello");
+  assert.equal(hello.text.startsWith(" "), false);
 });
 
 test("empty thinking turns are skipped but send-message bodies are kept", () => {
@@ -229,6 +226,44 @@ test("image turns render a placeholder; text-only turns do not", () => {
   assert.equal(
     textOnly.some((row) => row.kind === "image"),
     false,
+  );
+});
+
+test("1:1 rows have no speaker labels; rooms still do", () => {
+  const oneToOne = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "hi" },
+      { id: "2", role: "assistant", speaker: "Dev", text: "hello" },
+    ],
+    40,
+    "Dev",
+  );
+  assert.equal(
+    oneToOne.some((row) => row.kind === "speaker"),
+    false,
+  );
+  assert.ok(oneToOne.some((row) => row.kind === "body" && row.align === "end"));
+  assert.ok(oneToOne.some((row) => row.kind === "body" && row.align === "start"));
+
+  const ctx = {
+    agentName: "project X",
+    isGroup: true,
+    members: [
+      { id: "dev-id", name: "Dev" },
+      { id: "chief-id", name: "Chief of Staff" },
+    ],
+  };
+  const room = turnsToRows(
+    [
+      { id: "u", role: "user", speaker: "you", text: "hi" },
+      { id: "d", role: "assistant", speaker: "send-message", speakerId: "dev-id", text: "on it" },
+    ],
+    40,
+    ctx,
+  );
+  assert.deepEqual(
+    room.filter((row) => row.kind === "speaker").map((row) => row.text.trim()),
+    ["you", "Dev"],
   );
 });
 
