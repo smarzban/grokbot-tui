@@ -7,9 +7,11 @@ import {
   alignBlockEnd,
   chromeRows,
   composeVisible,
+  gapAfterTurn,
   MESSAGE_WRAP_RATIO,
   speakerLabel,
   takeLastRows,
+  TRANSCRIPT_JUSTIFY,
   TRANSCRIPT_PAD_BOTTOM,
   transcriptInnerHeight,
   transcriptPadBottom,
@@ -367,7 +369,7 @@ test("long user and assistant lines wrap at 90% of the pane; short user still ri
   assert.equal(firstContentCol(hi.text), pane - 2);
 });
 
-test("consecutive same-side turns stack with no empty; user→assistant still has air", () => {
+test("consecutive assistant turns have one blank; consecutive user none; user↔assistant two in 1:1", () => {
   const twoBots = turnsToRows(
     [
       { id: "1", role: "assistant", speaker: "Dev", text: "first" },
@@ -378,12 +380,7 @@ test("consecutive same-side turns stack with no empty; user→assistant still ha
   );
   assert.deepEqual(
     twoBots.map((row) => row.kind),
-    ["body", "body"],
-  );
-  assert.equal(
-    twoBots.some((row) => row.kind === "empty"),
-    false,
-    "no blank line between consecutive assistant turns",
+    ["body", "empty", "body"],
   );
 
   const twoUsers = turnsToRows(
@@ -426,8 +423,23 @@ test("consecutive same-side turns stack with no empty; user→assistant still ha
   );
   assert.deepEqual(
     roomSameSide.map((row) => row.kind),
-    ["speaker", "body", "speaker", "body"],
+    ["speaker", "body", "empty", "speaker", "body"],
   );
+});
+
+test("gapAfterTurn encodes 1:1 vs room and same-side rules", () => {
+  assert.equal(gapAfterTurn("user", "assistant", false), 2);
+  assert.equal(gapAfterTurn("assistant", "user", false), 2);
+  assert.equal(gapAfterTurn("assistant", "assistant", false), 1);
+  assert.equal(gapAfterTurn("user", "user", false), 0);
+  assert.equal(gapAfterTurn("user", "assistant", true), 1);
+  assert.equal(gapAfterTurn("assistant", "assistant", true), 1);
+  assert.equal(gapAfterTurn("user", "user", true), 0);
+  assert.equal(gapAfterTurn("assistant", undefined, false), 0);
+});
+
+test("transcript pane pins content to the bottom of the frame", () => {
+  assert.equal(TRANSCRIPT_JUSTIFY, "flex-end");
 });
 
 test("idle transcript has a single bottom pad, not a trailing empty row", () => {

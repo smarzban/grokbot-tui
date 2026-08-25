@@ -18,6 +18,7 @@ import {
   chromeRows,
   innerWidth,
   isFullPictureRun,
+  TRANSCRIPT_JUSTIFY,
   transcriptInnerHeight,
   transcriptPadBottom,
   turnsToRows,
@@ -521,6 +522,7 @@ export function Chat({
 
       <Box
         flexDirection="column"
+        justifyContent={TRANSCRIPT_JUSTIFY}
         borderStyle="round"
         borderColor="gray"
         paddingX={1}
@@ -528,34 +530,36 @@ export function Chat({
         height={transcriptH}
         overflow="hidden"
       >
-        {status.kind === "error" ? <Text color="red">{status.message}</Text> : null}
-        {view.rows.length === 0 && status.kind !== "error" ? (
-          <Text dimColor>
-            {status.kind === "loading" ? "Loading…" : "No messages yet. Type below and press Enter."}
-          </Text>
-        ) : (
-          <>
-            {view.clipped ? <Text dimColor>···</Text> : null}
-            {renderTranscriptRows(view.rows, inner)}
-            {view.moreBelow ? <Text dimColor>···</Text> : null}
-          </>
-        )}
-        {answeringLine ? (
-          <Text color="yellow" dimColor wrap="truncate">
-            {answeringLine}
-          </Text>
-        ) : null}
-        {menuOpen
-          ? mentionShown.map((name) => {
-              const selected = name === mentionMatches[mentionIndex];
-              return (
-                <Text key={name} inverse={selected} color={selected ? undefined : "yellow"} wrap="truncate">
-                  {selected ? "› @" : "  @"}
-                  {name}
-                </Text>
-              );
-            })
-          : null}
+        <Box flexDirection="column" flexShrink={0}>
+          {status.kind === "error" ? <Text color="red">{status.message}</Text> : null}
+          {view.rows.length === 0 && status.kind !== "error" ? (
+            <Text dimColor>
+              {status.kind === "loading" ? "Loading…" : "No messages yet. Type below and press Enter."}
+            </Text>
+          ) : (
+            <>
+              {view.clipped ? <Text dimColor>···</Text> : null}
+              {renderTranscriptRows(view.rows, inner)}
+              {view.moreBelow ? <Text dimColor>···</Text> : null}
+            </>
+          )}
+          {answeringLine ? (
+            <Text color="yellow" dimColor wrap="truncate">
+              {answeringLine}
+            </Text>
+          ) : null}
+          {menuOpen
+            ? mentionShown.map((name) => {
+                const selected = name === mentionMatches[mentionIndex];
+                return (
+                  <Text key={name} inverse={selected} color={selected ? undefined : "yellow"} wrap="truncate">
+                    {selected ? "› @" : "  @"}
+                    {name}
+                  </Text>
+                );
+              })
+            : null}
+        </Box>
       </Box>
 
       <Box

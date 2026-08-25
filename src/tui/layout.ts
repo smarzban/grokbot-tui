@@ -158,6 +158,21 @@ export function speakerLabel(turn: ChatTurn, agentNameOrCtx: string | SpeakerCon
 
 export { imagePlaceholder } from "./images.js";
 
+/**
+ * Blank rows after a turn, before the next visible turn.
+ * 1:1 user↔assistant is two; rooms opposite-side is one; consecutive
+ * assistant is one; consecutive user is none. Last turn has no trailing empty.
+ */
+export function gapAfterTurn(
+  current: ChatTurn["role"],
+  next: ChatTurn["role"] | undefined,
+  isGroup: boolean,
+): number {
+  if (next == null) return 0;
+  if (next === current) return current === "assistant" ? 1 : 0;
+  return isGroup ? 1 : 2;
+}
+
 export function turnsToRows(
   turns: ChatTurn[],
   width: number,
@@ -232,9 +247,7 @@ export function turnsToRows(
     }
     rows.push(...pending);
     const next = visible[i + 1];
-    if (!next || next.role === turn.role) continue;
-    // Opposite side: 1:1 needs two blank rows (no names); rooms one.
-    const gap = ctx.isGroup === true ? 1 : 2;
+    const gap = gapAfterTurn(turn.role, next?.role, ctx.isGroup === true);
     for (let g = 0; g < gap; g++) {
       rows.push({ kind: "empty", text: "", role: turn.role, align });
     }
@@ -391,6 +404,9 @@ export function composeVisible(draft: string, width: number): { prefix: string; 
 
 /** Blank row inside the transcript frame, above the bottom border. */
 export const TRANSCRIPT_PAD_BOTTOM = 1;
+
+/** Pin transcript children to the bottom of the fixed-height pane. */
+export const TRANSCRIPT_JUSTIFY = "flex-end" as const;
 
 /** No pad under a visible answering line so it sits on the transcript border. */
 export function transcriptPadBottom(answering: boolean): number {
