@@ -2,7 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSdkBot, GatewayHostClient } from "../src/client/host.js";
-import { CHIEF_ID, DEV_ID, MockHostClient, PROJECT_X_ID } from "../src/client/mock.js";
+import { CHIEF_ID, DEV_ID, MockHostClient, PROJECT_X_ID, mockPhotoPath } from "../src/client/mock.js";
 import { openHostClient } from "../src/client/factory.js";
 import { HostClientError } from "../src/client/types.js";
 import { asAgentRow, enrichRoster, turnsFromHostTranscript } from "../src/client/transcript.js";
@@ -41,6 +41,16 @@ test("mock host getTranscript picks up an appended app-side turn", async () => {
   const after = await mock.getTranscript(ada.id);
   assert.equal(transcriptChanged(before, after), true);
   assert.equal(after.at(-1)?.text, "from the Grok Bot app");
+});
+
+test("mock Ada transcript includes a real photo path and a name-only placeholder", async () => {
+  const mock = new MockHostClient();
+  const ada = (await mock.listAgents())[0];
+  assert.ok(ada);
+  const history = await mock.getTranscript(ada.id);
+  const photo = mockPhotoPath();
+  assert.ok(history.some((turn) => turn.images?.some((image) => image.path === photo)));
+  assert.ok(history.some((turn) => turn.images?.some((image) => image.alt === "name-only.png" && !image.path)));
 });
 
 test("mock host lists agents by name and id", async () => {
@@ -89,7 +99,7 @@ test("mock host sendPrompt waits until a reply", async () => {
   assert.match(result.reply ?? "", /Ada here/);
   const history = await mock.getTranscript(ada.id);
   assert.equal(history.at(-1)?.role, "assistant");
-  assert.equal(history.at(0)?.role, "user");
+  assert.ok(history.some((turn) => turn.role === "user" && turn.text === "status only"));
 });
 
 test("mock host cancels an in-flight wait", async () => {
@@ -334,6 +344,30 @@ test("transcript parser keeps user-attachment and send-message attachment", () =
   assert.equal(cats[0]?.role, "user");
   assert.equal(outs.length, 1);
   assert.ok(turns.some((turn) => turn.text === "hello from Ada" && (turn.images?.length ?? 0) === 0));
+});
+
+test("transcript parser keeps local attachmentPaths and does not treat http as a path", () => {
+  const turns = turnsFromHostTranscript({
+    entries: [
+      {
+        kind: "user-attachment",
+        fileName: "disk.png",
+        attachmentPaths: ["/tmp/disk.png"],
+        timestampMs: 1,
+      },
+      {
+        kind: "send-message",
+        message: { type: "attachment", fileName: "remote.png", attachmentPaths: ["https://example.invalid/x"] },
+        timestampMs: 2,
+      },
+    ],
+  });
+  const disk = turns.find((turn) => turn.images?.some((image) => image.alt === "disk.png"));
+  const remote = turns.find((turn) => turn.images?.some((image) => image.alt === "remote.png"));
+  assert.equal(disk?.images?.[0]?.path, "/tmp/disk.png");
+  assert.equal(disk?.images?.[0]?.url, undefined);
+  assert.equal(remote?.images?.[0]?.path, undefined);
+  assert.equal(remote?.images?.[0]?.url, "https://example.invalid/x");
 });
 
 test("redact never leaves a token in output", () => {

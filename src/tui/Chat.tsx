@@ -1,5 +1,5 @@
 import { Box, Text, useApp, useInput, useStdout, useWindowSize } from "ink";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
@@ -18,10 +18,14 @@ import {
   applyScrollDelta,
   chromeRows,
   innerWidth,
+  isFullPictureRun,
   transcriptInnerHeight,
   turnsToRows,
   visibleTranscript,
+  type TranscriptRow,
 } from "./layout.js";
+import { IMAGE_CELL_ROWS, imagePlaceholder } from "./images.js";
+import { Picture } from "./Picture.js";
 import {
   consumeMouseInput,
   DISABLE_MOUSE,
@@ -92,6 +96,53 @@ function termSize(columns: number, rows: number): { width: number; height: numbe
     width: Math.max(40, columns || 80),
     height: Math.max(12, rows || 24),
   };
+}
+
+function clippedPictureLabel(row: TranscriptRow, firstVisible: boolean): string {
+  if (!firstVisible) return " ";
+  const text = row.text.trim();
+  if (text) return row.text;
+  return imagePlaceholder(row.image ?? {});
+}
+
+function renderTranscriptRows(rows: TranscriptRow[], inner: number): ReactNode[] {
+  const out: React.ReactNode[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    if (row.kind === "picture" && isFullPictureRun(rows, i)) {
+      out.push(<Picture key={row.pictureId ?? `pic-${i}`} row={row} inner={inner} />);
+      i += IMAGE_CELL_ROWS - 1;
+      continue;
+    }
+    if (row.kind === "picture") {
+      const firstVisible = i === 0 || rows[i - 1]?.pictureId !== row.pictureId;
+      out.push(
+        <Text key={`p-${row.pictureId ?? i}-${i}`} dimColor color="yellow" wrap="truncate">
+          {clippedPictureLabel(row, firstVisible)}
+        </Text>,
+      );
+      continue;
+    }
+    if (row.kind === "empty") {
+      out.push(<Text key={`e-${i}`}> </Text>);
+      continue;
+    }
+    const isUser = row.align === "end";
+    const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : row.kind === "image" ? "yellow" : "white";
+    out.push(
+      <Text
+        key={`${row.kind}-${i}-${row.text.trimStart().slice(0, 16)}`}
+        bold={row.kind === "speaker"}
+        dimColor={row.kind === "image"}
+        color={color}
+        wrap="truncate"
+      >
+        {row.text}
+      </Text>,
+    );
+  }
+  return out;
 }
 
 export function Chat({
@@ -493,24 +544,7 @@ export function Chat({
         ) : (
           <>
             {view.clipped ? <Text dimColor>···</Text> : null}
-            {view.rows.map((row, i) => {
-              if (row.kind === "empty") {
-                return <Text key={`e-${i}`}> </Text>;
-              }
-              const isUser = row.align === "end";
-              const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : row.kind === "image" ? "yellow" : "white";
-              return (
-                <Text
-                  key={`${row.kind}-${i}-${row.text.trimStart().slice(0, 16)}`}
-                  bold={row.kind === "speaker"}
-                  dimColor={row.kind === "image"}
-                  color={color}
-                  wrap="truncate"
-                >
-                  {row.text}
-                </Text>
-              );
-            })}
+            {renderTranscriptRows(view.rows, inner)}
             {view.moreBelow ? <Text dimColor>···</Text> : null}
           </>
         )}

@@ -1,13 +1,17 @@
 import type { AgentMember, ChatImage, ChatTurn } from "../client/types.js";
 import { MIN_COMPOSE_INNER } from "./compose.js";
+import { IMAGE_CELL_ROWS, imagePlaceholder, localImagePath, pictureKey } from "./images.js";
 
 export type TranscriptAlign = "start" | "end";
 
 export type TranscriptRow = {
-  kind: "speaker" | "body" | "image" | "empty";
+  kind: "speaker" | "body" | "image" | "picture" | "empty";
   text: string;
   role?: ChatTurn["role"];
   align: TranscriptAlign;
+  image?: ChatImage;
+  pictureId?: string;
+  pictureSlot?: number;
 };
 
 export type TranscriptBlock = {
@@ -135,10 +139,7 @@ export function speakerLabel(turn: ChatTurn, agentNameOrCtx: string | SpeakerCon
   return name.length > 0 ? name : "bot";
 }
 
-export function imagePlaceholder(image: ChatImage): string {
-  const name = image.alt?.trim();
-  return name ? `[image] ${name}` : "[image]";
-}
+export { imagePlaceholder } from "./images.js";
 
 function paint(text: string, align: TranscriptAlign, paneWidth: number): string {
   return align === "end" ? alignEnd(text, paneWidth) : text;
@@ -173,13 +174,31 @@ export function turnsToRows(
         });
       }
     }
-    for (const image of turn.images ?? []) {
-      rows.push({
-        kind: "image",
-        text: paint(imagePlaceholder(image), align, paneWidth),
-        role: turn.role,
-        align,
-      });
+    for (const [index, image] of (turn.images ?? []).entries()) {
+      const file = localImagePath(image);
+      if (file) {
+        const id = pictureKey(turn.id, index);
+        const label = paint(imagePlaceholder(image), align, paneWidth);
+        for (let slot = 0; slot < IMAGE_CELL_ROWS; slot++) {
+          rows.push({
+            kind: "picture",
+            text: slot === 0 ? label : "",
+            role: turn.role,
+            align,
+            image: { ...image, path: file },
+            pictureId: id,
+            pictureSlot: slot,
+          });
+        }
+      } else {
+        rows.push({
+          kind: "image",
+          text: paint(imagePlaceholder(image), align, paneWidth),
+          role: turn.role,
+          align,
+          image,
+        });
+      }
     }
     rows.push({ kind: "empty", text: "", role: turn.role, align });
   }
@@ -310,6 +329,24 @@ export function agentLabel(agent: { id: string; name: string }, roster: Array<{ 
   const dup = roster.filter((row) => row.name.trim().toLowerCase() === name.toLowerCase()).length > 1;
   if (!dup) return name;
   return `${name} · ${shortIdPrefix(agent.id)}`;
+}
+
+/** True when `start` is a complete reserved picture block (safe for Kitty). */
+export function isFullPictureRun(
+  rows: TranscriptRow[],
+  start: number,
+  height = IMAGE_CELL_ROWS,
+): boolean {
+  const lead = rows[start];
+  if (lead?.kind !== "picture" || lead.pictureSlot !== 0 || !lead.pictureId) return false;
+  if (start + height > rows.length) return false;
+  for (let i = 0; i < height; i++) {
+    const row = rows[start + i];
+    if (row?.kind !== "picture" || row.pictureId !== lead.pictureId || row.pictureSlot !== i) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function composeVisible(draft: string, width: number): { prefix: string; caret: boolean } {

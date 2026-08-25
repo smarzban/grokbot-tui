@@ -16,13 +16,13 @@ Command names and response shapes come from those libraries / the live host. The
 - Sends a message. 1:1 chats **poll until the bot is idle** and show the last reply; rooms send on the group id and let idle poll pick up each member’s turn
 - While idle, refreshes the transcript and roster so Grok Bot app messages and `isRunning` answering indicators show up without sending from the TUI
 - PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
-- Images from the host (`user-attachment` / SendMessage `attachment`) show as `[image] filename` on the correct side
+- Images from the host (`user-attachment` / SendMessage `attachment`) draw in Ghostty when the turn has a **local file path** that exists (`attachmentPaths` on disk). Filename-only turns stay `[image] filename`. Ghostty already speaks the Kitty graphics protocol — no extra install, no Ghostty config flag, no Sixel / iTerm2.
 - In a room, `@` plus a prefix lists matching members; Tab or Enter inserts `@Name ` as plain text
 - Switch bots or rooms without quitting
 - Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
 - Uses the terminal alternate screen so the transcript stays framed instead of spilling into scrollback
 
-Out of scope: creating or deleting rooms, seating members, streaming, creating or deleting agents, Slack, avatars, rich markdown. Inline Kitty graphics are not used; image turns use a placeholder so layout stays stable.
+Out of scope: creating or deleting rooms, seating members, streaming, creating or deleting agents, Slack, avatars, rich markdown. The TUI does not upload attachments from the compose box.
 
 ## Install
 
@@ -124,6 +124,19 @@ npm run typecheck
 Client tests drive a **mock host**: in-memory `MockHostClient`, a scripted local-box `fetch` for the SDK path, and a scripted desktop gateway (path-preserving URL + extra session headers, no `GET /health`) for `DesktopHostClient`. Coverage includes list, send + poll until reply, host-down, missing/wrong auth, health-404-then-listAgents boot, and desktop header/path forwarding.
 
 This environment usually cannot talk to a real Grok Bot host. Use `--mock` to exercise the TUI; point `.env` at your host to chat for real.
+
+## Images in Ghostty
+
+Ghostty implements the Kitty graphics protocol. This TUI does **not** need `viu`, `chafa`, `kitten`, Sixel, iTerm2 OSC 1337, or a Ghostty config toggle.
+
+How a turn is drawn:
+
+1. `getTranscript` / `getAgentTranscriptTail` may include `attachmentPaths` on `user-attachment` or SendMessage `{ type: "attachment" }` rows. A local filesystem path that still exists is reserved 8 transcript rows and painted with [`ink-picture`](https://github.com/endernoke/ink-picture) (`protocol: { full: "kitty" }`, stable React keys so poll/re-render replaces in place). If the block is scrolled so those 8 rows are not fully in the pane, the TUI shows `[image] filename` instead of a Kitty placement (avoids ghost pixels).
+2. Filename-only turns (`fileName` / `attachmentNames`, no readable path) stay `[image] filename`.
+3. `https://` values in `attachmentPaths` are stored as `url` and **not** fetched or printed (they often need session headers). They stay a placeholder.
+4. The host command list includes unsugared `readAttachmentImage` / `readAttachmentChunk`. grokbot-sdk does not document their input keys, so this TUI does not call them. `searchMedia` returns names and mime, not bytes.
+
+`npm start -- --mock` seeds Ada with `fixtures/mock-photo.png` (pixels) and a name-only attachment (placeholder).
 
 ## Scripts
 

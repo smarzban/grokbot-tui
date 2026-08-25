@@ -16,7 +16,9 @@ export function shouldPollTranscript(kind: string): boolean {
 }
 
 function imageSig(turn: ChatTurn): string {
-  return (turn.images ?? []).map((image) => image.alt ?? "").join("\0");
+  return (turn.images ?? [])
+    .map((image) => `${image.alt ?? ""}\0${image.path ?? ""}\0${image.mime ?? ""}`)
+    .join("\x01");
 }
 
 /** True when a polled snapshot is worth replacing the on-screen turns. */

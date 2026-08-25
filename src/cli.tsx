@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { render } from "ink";
+import { InkPictureProvider } from "ink-picture";
 import { loadDotEnvFile, readConfig, readToken } from "./config.js";
 import { App } from "./tui/App.js";
 
@@ -57,7 +58,12 @@ async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  render(<App config={config} token={token} mock={mock} />, { alternateScreen: true });
+  render(
+    <InkPictureProvider>
+      <App config={config} token={token} mock={mock} />
+    </InkPictureProvider>,
+    { alternateScreen: true },
+  );
 }
 
 main(process.argv).catch((err: unknown) => {

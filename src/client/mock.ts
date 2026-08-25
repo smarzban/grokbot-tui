@@ -1,4 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { HOST_DOWN_MESSAGE, MISSING_AUTH_MESSAGE } from "./errors.js";
 import { DEFAULT_TRANSCRIPT_LIMIT, HostClientError } from "./types.js";
 import type { Agent, ChatTurn, Health, HostClient, SendPromptInput, SendResult } from "./types.js";
@@ -18,6 +20,53 @@ export const BEA_ID = "22222222-2222-4222-8222-222222222222";
 export const DEV_ID = "33333333-3333-4333-8333-333333333333";
 export const CHIEF_ID = "44444444-4444-4444-8444-444444444444";
 export const PROJECT_X_ID = "55555555-5555-4555-8555-555555555555";
+
+/** Checked-in PNG so `npm start -- --mock` can draw a real picture in Ghostty. */
+export function mockPhotoPath(): string {
+  return fileURLToPath(new URL("../../fixtures/mock-photo.png", import.meta.url));
+}
+
+function defaultTranscripts(agents: Agent[]): Record<string, ChatTurn[]> {
+  const ada = agents.find((agent) => agent.id === ADA_ID) ?? agents.find((agent) => !agent.isGroup);
+  if (!ada) return {};
+  const photo = mockPhotoPath();
+  const turns: ChatTurn[] = [];
+  if (existsSync(photo)) {
+    turns.push({
+      id: "mock-photo",
+      role: "user",
+      speaker: "you",
+      text: "",
+      timestampMs: 1,
+      images: [{ alt: "mock-photo.png", path: photo, mime: "image/png" }],
+    });
+    turns.push({
+      id: "mock-photo-note",
+      role: "assistant",
+      speaker: ada.name,
+      speakerId: ada.id,
+      text: "That's the mock photo. Ghostty draws it with the Kitty graphics protocol — nothing extra to install.",
+      timestampMs: 2,
+    });
+  }
+  turns.push({
+    id: "mock-name-only",
+    role: "user",
+    speaker: "you",
+    text: "",
+    timestampMs: 3,
+    images: [{ alt: "name-only.png" }],
+  });
+  turns.push({
+    id: "mock-name-note",
+    role: "assistant",
+    speaker: ada.name,
+    speakerId: ada.id,
+    text: "That last turn is a filename with no bytes on disk, so it stays a placeholder.",
+    timestampMs: 4,
+  });
+  return { [ada.id]: turns };
+}
 
 const DEFAULT_AGENTS: Agent[] = [
   { id: ADA_ID, name: "Ada", isGroup: false },
@@ -45,7 +94,10 @@ function cloneAgent(agent: Agent): Agent {
 }
 
 function cloneTurns(turns: ChatTurn[]): ChatTurn[] {
-  return turns.map((turn) => ({ ...turn }));
+  return turns.map((turn) => ({
+    ...turn,
+    ...(turn.images ? { images: turn.images.map((image) => ({ ...image })) } : {}),
+  }));
 }
 
 function groupMembers(agent: Agent): Array<{ id: string; name: string }> {
@@ -67,8 +119,9 @@ export class MockHostClient implements HostClient {
   constructor(options: MockHostOptions = {}) {
     this.#agents = (options.agents ?? DEFAULT_AGENTS).map(cloneAgent);
     this.#transcripts = new Map();
+    const seeded = options.transcripts ?? defaultTranscripts(this.#agents);
     for (const agent of this.#agents) {
-      this.#transcripts.set(agent.id, cloneTurns(options.transcripts?.[agent.id] ?? []));
+      this.#transcripts.set(agent.id, cloneTurns(seeded[agent.id] ?? []));
     }
     this.#replyDelayMs = options.replyDelayMs ?? 40;
     this.#replyFor =

@@ -33,6 +33,7 @@
     "dotenv": "^17.4.2",
     "grok-bot-cli": "^0.2.2",
     "ink": "^7.1.1",
+    "ink-picture": "^2.1.0",
     "react": "^19.2.8"
   },
   "devDependencies": {
