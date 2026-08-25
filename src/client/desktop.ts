@@ -19,6 +19,7 @@ import {
   getTranscriptTail,
   sendPrompt as cliSendPrompt,
 } from "grok-bot-cli/src/gateway.js";
+import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
 import { redact } from "../redact.js";
 import { isNotFoundError, mapHostError } from "./errors.js";
 import {
@@ -139,7 +140,15 @@ export class DesktopHostClient implements HostClient {
   async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
     try {
       const out = await getTranscriptTail(this.#session, agentId, limit);
-      return turnsFromHostTranscript(out.transcript);
+      const turns = turnsFromHostTranscript(out.transcript);
+      return await hydrateTurnImages(agentId, turns, {
+        call: (method, body) => gatewayCall(this.#session, method, body),
+        fetchUrl: (url) =>
+          fetchBytesWithHeaders(url, {
+            authorization: `Bearer ${this.#session.gatewayToken}`,
+            ...this.#session.gatewayHeaders,
+          }),
+      });
     } catch (err) {
       throw mapDesktopError(err, this.#session);
     }

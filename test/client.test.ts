@@ -371,6 +371,45 @@ test("transcript parser keeps local attachmentPaths and does not treat http as a
   assert.equal(remote?.images?.[0]?.url, "https://example.invalid/x");
 });
 
+test("transcript parser keeps host id, entryId, mime, and attachment names", () => {
+  const turns = turnsFromHostTranscript({
+    entries: [
+      {
+        id: "entry-abc",
+        kind: "user-attachment",
+        fileName: "cat.png",
+        mime: "image/png",
+        attachmentNames: ["cat.png"],
+        attachmentPaths: ["https://example.invalid/cat.png"],
+        timestampMs: 1,
+      },
+      {
+        id: "wrap-1",
+        kind: "send-message",
+        message: {
+          type: "attachment",
+          id: "att-9",
+          fileName: "out.png",
+          mime: "image/png",
+        },
+        timestampMs: 2,
+      },
+    ],
+  });
+  const cat = turns.find((turn) => turn.images?.some((image) => image.alt === "cat.png"))?.images?.[0];
+  assert.equal(cat?.fileName, "cat.png");
+  assert.equal(cat?.mime, "image/png");
+  assert.equal(cat?.entryId, "entry-abc");
+  assert.equal(cat?.url, "https://example.invalid/cat.png");
+  assert.deepEqual(cat?.attachmentNames, ["cat.png"]);
+  assert.deepEqual(cat?.attachmentPaths, ["https://example.invalid/cat.png"]);
+  const out = turns.find((turn) => turn.images?.some((image) => image.alt === "out.png"))?.images?.[0];
+  assert.equal(out?.fileName, "out.png");
+  assert.equal(out?.id, "att-9");
+  assert.equal(out?.entryId, "wrap-1");
+  assert.equal(out?.mime, "image/png");
+});
+
 test("redact never leaves a token in output", () => {
   const secret = "super-secret-token-value";
   const out = redact(`Authorization: Bearer ${secret} SAND_GATEWAY_TOKEN=${secret}`, secret);

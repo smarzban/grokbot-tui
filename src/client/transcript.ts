@@ -92,17 +92,29 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+function pickString(rec: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = rec[key];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
 /**
- * Build an image ref from documented host fields only:
- * `fileName` / `mime` / `ext` (search-index media rows) and
+ * Build an image ref from documented host fields:
+ * `id` / `entryId`, `fileName` / `mime` / `ext` (search-index media rows),
  * `attachmentPaths` / `attachmentNames` (sendPrompt).
  * Never treat query strings as display text.
  */
 function imageFromRecord(rec: Record<string, unknown>): ChatImage | undefined {
   const names = stringList(rec.attachmentNames);
   const paths = stringList(rec.attachmentPaths);
-  const fileName = typeof rec.fileName === "string" && rec.fileName.length > 0 ? rec.fileName : names[0];
-  const mime = typeof rec.mime === "string" && rec.mime.length > 0 ? rec.mime : undefined;
+  const fileName = pickString(rec, ["fileName"]) ?? names[0];
+  const mime = pickString(rec, ["mime"]);
+  const ext = pickString(rec, ["ext"]);
+  const entryId = pickString(rec, ["entryId"]);
+  const id = pickString(rec, ["id"]);
+  const explicitUrl = pickString(rec, ["url"]);
   const pathOrUrl = paths[0];
   let path: string | undefined;
   let url: string | undefined;
@@ -115,13 +127,64 @@ function imageFromRecord(rec: Record<string, unknown>): ChatImage | undefined {
       if (!alt) alt = basename(pathOrUrl);
     }
   }
-  if (!alt && !path && !url && !mime) return undefined;
+  if (!url && explicitUrl && isHttpUrl(explicitUrl)) url = explicitUrl;
+  if (!alt && ext && !mime) {
+    alt = `image.${ext.replace(/^\./, "")}`;
+  }
+  if (!alt && !path && !url && !mime && !entryId && !id && names.length === 0 && paths.length === 0) {
+    return undefined;
+  }
   return {
     ...(alt ? { alt } : {}),
+    ...(fileName ? { fileName } : {}),
     ...(path ? { path } : {}),
     ...(url ? { url } : {}),
     ...(mime ? { mime } : {}),
+    ...(entryId ? { entryId } : {}),
+    ...(id ? { id } : {}),
+    ...(names.length ? { attachmentNames: names } : {}),
+    ...(paths.length ? { attachmentPaths: paths } : {}),
   };
+}
+
+function mergeChatImage(base: ChatImage | undefined, extra: ChatImage | undefined): ChatImage | undefined {
+  if (!base) return extra;
+  if (!extra) return base;
+  return {
+    ...(extra.alt ? { alt: extra.alt } : base.alt ? { alt: base.alt } : {}),
+    ...(extra.fileName ? { fileName: extra.fileName } : base.fileName ? { fileName: base.fileName } : {}),
+    ...(extra.path ? { path: extra.path } : base.path ? { path: base.path } : {}),
+    ...(extra.url ? { url: extra.url } : base.url ? { url: base.url } : {}),
+    ...(extra.mime ? { mime: extra.mime } : base.mime ? { mime: base.mime } : {}),
+    ...(extra.entryId ? { entryId: extra.entryId } : base.entryId ? { entryId: base.entryId } : {}),
+    ...(extra.id ? { id: extra.id } : base.id ? { id: base.id } : {}),
+    ...(extra.attachmentNames?.length
+      ? { attachmentNames: extra.attachmentNames }
+      : base.attachmentNames?.length
+        ? { attachmentNames: base.attachmentNames }
+        : {}),
+    ...(extra.attachmentPaths?.length
+      ? { attachmentPaths: extra.attachmentPaths }
+      : base.attachmentPaths?.length
+        ? { attachmentPaths: base.attachmentPaths }
+        : {}),
+  };
+}
+
+function recordsForImages(entry: Record<string, unknown>): Record<string, unknown>[] {
+  const records: Record<string, unknown>[] = [entry];
+  if (isRecord(entry.entry)) records.push(entry.entry);
+  const message = isRecord(entry.message)
+    ? entry.message
+    : isRecord(entry.entry) && isRecord(entry.entry.message)
+      ? entry.entry.message
+      : undefined;
+  if (message) {
+    records.push(message);
+    if (isRecord(message.attachment)) records.push(message.attachment);
+  }
+  if (isRecord(entry.attachment)) records.push(entry.attachment);
+  return records;
 }
 
 function imagesFromContentParts(content: unknown): ChatImage[] {
@@ -145,21 +208,34 @@ export function imagesFromHostEntry(value: unknown): ChatImage[] {
   if (!isRecord(entry)) return [];
   const images: ChatImage[] = [];
   const kind = typeof entry.kind === "string" ? entry.kind : "";
-  const message = isRecord(entry.message) ? entry.message : undefined;
+  const nested = isRecord(entry.entry) ? entry.entry : undefined;
+  const message = isRecord(entry.message)
+    ? entry.message
+    : isRecord(nested?.message)
+      ? nested.message
+      : undefined;
   const sendAttachment = message?.type === "attachment";
-  const userAttachment = kind === "user-attachment";
+  const userAttachment = kind === "user-attachment" || nested?.kind === "user-attachment";
 
   images.push(...imagesFromContentParts(entry.content));
+  if (nested) images.push(...imagesFromContentParts(nested.content));
   if (message) images.push(...imagesFromContentParts(message.content));
 
   if (userAttachment || sendAttachment) {
-    const fromMessage = message ? imageFromRecord(message) : undefined;
-    const fromEntry = imageFromRecord(entry);
-    const found = fromMessage ?? fromEntry;
+    let found: ChatImage | undefined;
+    for (const rec of recordsForImages(entry)) {
+      found = mergeChatImage(found, imageFromRecord(rec));
+    }
     if (found) images.push(found);
     else if (images.length === 0) images.push({ alt: "image" });
   }
-  return images;
+
+  const wrapperId = pickString(entry, ["id", "entryId"]) ?? (nested ? pickString(nested, ["id", "entryId"]) : undefined);
+  if (!wrapperId) return images;
+  return images.map((image) => ({
+    ...image,
+    ...(image.entryId ? {} : { entryId: wrapperId }),
+  }));
 }
 
 function roleFromEntry(entry: Record<string, unknown>, speaker: string): ChatTurn["role"] {

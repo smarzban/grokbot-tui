@@ -1,4 +1,5 @@
 import { GrokBot } from "@adam91holt/grokbot-sdk";
+import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
 import { mapHostError } from "./errors.js";
 import { asAgentRow, enrichRoster, turnsFromHostTranscript, unwrapAgentList } from "./transcript.js";
 import {
@@ -53,7 +54,14 @@ export class GatewayHostClient implements HostClient {
   async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
     try {
       const payload = await this.bot.getAgentTranscriptTail({ id: agentId, limit });
-      return turnsFromHostTranscript(payload);
+      const turns = turnsFromHostTranscript(payload);
+      const secret = this.#secret;
+      return await hydrateTurnImages(agentId, turns, {
+        call: (method, body) => this.bot.command(method, body),
+        fetchUrl: secret
+          ? (url) => fetchBytesWithHeaders(url, { authorization: `Bearer ${secret}` })
+          : undefined,
+      });
     } catch (err) {
       throw mapHostError(err, this.#secret);
     }

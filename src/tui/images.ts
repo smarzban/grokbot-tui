@@ -140,7 +140,8 @@ export function mergeImages(base: ChatImage[], extra: ChatImage[]): ChatImage[] 
 
 /**
  * Local file we can hand to ink-picture. HTTP `url` is never used here —
- * those often need session headers, and we do not print or fetch them.
+ * hydrateTurnImages downloads those to a temp path first. This helper
+ * only accepts an on-disk file.
  */
 export function localImagePath(image: ChatImage): string | undefined {
   const raw = image.path?.trim();

@@ -16,7 +16,7 @@ Command names and response shapes come from those libraries / the live host. The
 - Sends a message. 1:1 chats **poll until the bot is idle** and show the last reply; rooms send on the group id and let idle poll pick up each member’s turn
 - While idle, refreshes the transcript and roster so Grok Bot app messages and `isRunning` answering indicators show up without sending from the TUI
 - PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
-- Images from the host (`user-attachment` / SendMessage `attachment`) draw in Ghostty when the turn has a **local file path** that exists. Pasting a local screenshot path as the message (png/jpg/gif/webp/svg, including `file://` and drag-quoted spaces) also draws. Filename-only host turns stay `[image] filename`. Ghostty already speaks the Kitty graphics protocol — no extra install.
+- Images from the host (`user-attachment` / SendMessage `attachment`) draw in Ghostty. App attachments are downloaded to a temp file (via `readAttachmentImage` / `readAttachmentChunk`, or by fetching an `https://` `attachmentPaths` URL with session headers) and then painted the same way as a local path. Pasting a local screenshot path as the message (png/jpg/gif/webp/svg, including `file://` and drag-quoted spaces) also draws. Filename-only host turns stay `[image] filename`. Ghostty already speaks the Kitty graphics protocol — no extra install.
 - In a room, `@` plus a prefix lists matching members; Tab or Enter inserts `@Name ` as plain text
 - Switch bots or rooms without quitting
 - Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
@@ -131,11 +131,11 @@ Ghostty implements the Kitty graphics protocol. This TUI does **not** need `viu`
 
 How a turn is drawn:
 
-1. `getTranscript` / `getAgentTranscriptTail` may include `attachmentPaths` on `user-attachment` or SendMessage `{ type: "attachment" }` rows. A local filesystem path that still exists is reserved 8 transcript rows and painted with [`ink-picture`](https://github.com/endernoke/ink-picture) (`protocol: { full: "kitty" }`, stable React keys so poll/re-render replaces in place). If the block is scrolled so those 8 rows are not fully in the pane, the TUI shows `[image] filename` instead of a Kitty placement (avoids ghost pixels).
+1. `getTranscript` / `getAgentTranscriptTail` may include `attachmentPaths` on `user-attachment` or SendMessage `{ type: "attachment" }` rows. A local filesystem path (from the host, or a temp file we cached after download) is reserved 8 transcript rows and painted with [`ink-picture`](https://github.com/endernoke/ink-picture) (`protocol: { full: "kitty" }`, stable React keys so poll/re-render replaces in place). If the block is scrolled so those 8 rows are not fully in the pane, the TUI shows `[image] filename` instead of a Kitty placement (avoids ghost pixels).
 2. A user or assistant message whose text is (or contains) a **local image path that exists** — including `file://` URLs, quoted paths, and drag-quoted `\ ` spaces — is drawn the same way. A path-only message does not keep the raw path as bubble text. Extensions: png, jpg, jpeg, gif, webp, svg.
-3. Filename-only host turns (`fileName` / `attachmentNames`, no readable path) stay `[image] filename`.
-4. `https://` values in `attachmentPaths` are stored as `url` and **not** fetched or printed (they often need session headers). They stay a placeholder.
-5. The host command list includes unsugared `readAttachmentImage` / `readAttachmentChunk`. grok-bot-cli does not wrap them and grokbot-sdk does not document their input keys, so this TUI does not guess a download body. Bot-sent attachments without an on-disk path stay a placeholder.
+3. Filename-only host turns (`fileName` / `attachmentNames`, no fetchable id/url/bytes) stay `[image] filename`.
+4. `https://` values in `attachmentPaths` are stored as `url` (never printed). After poll/load the TUI downloads those bytes with the same session headers as `gbot` (`gatewayCall` on desktop, `command()` on the local-box SDK) and caches a local file under `os.tmpdir()`.
+5. Unsugared host commands `readAttachmentImage` / `readAttachmentChunk` have no typed inputKeys. The TUI probes them through `gatewayCall` / `bot.command` using fields that already appear on the transcript entry (`agentId`, `fileName`, `id`, `entryId`, `mime`, `attachmentNames`, `attachmentPaths`) — not invented keys, and not grokbot-sdk typed wrappers. The body that works is reused so the 1.5s idle poll does not re-download.
 
 `npm start -- --mock` seeds Ada with `fixtures/mock-photo.png` as an attachment **and** as a pasted path (both should draw), plus a name-only attachment (placeholder).
 

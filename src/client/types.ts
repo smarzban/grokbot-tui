@@ -24,11 +24,21 @@ export const DEFAULT_TRANSCRIPT_LIMIT = 500;
 export type ChatImage = {
   /** Filename or alt shown in the TUI. Never a token-bearing URL. */
   alt?: string;
-  /** Local filesystem path when the host gave one in attachmentPaths. */
+  /** Host `fileName` when the entry carried one (may match `alt`). */
+  fileName?: string;
+  /** Local filesystem path when the host gave one or we cached downloaded bytes. */
   path?: string;
   /** https URL from attachmentPaths. Do not print; may need session headers to fetch. */
   url?: string;
   mime?: string;
+  /** Host store / transcript entry id when the row carried `id` or `entryId`. */
+  entryId?: string;
+  /** Host message/attachment `id` when distinct from the entry id. */
+  id?: string;
+  /** Host `attachmentNames` as sent on sendPrompt / the entry. */
+  attachmentNames?: string[];
+  /** Host `attachmentPaths` (local or https). Do not print https values. */
+  attachmentPaths?: string[];
 };
 
 export type ChatTurn = {

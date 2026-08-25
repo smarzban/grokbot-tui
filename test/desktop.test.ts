@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { probeAndList } from "../src/client/boot.js";
+import { resetAttachmentCacheForTests } from "../src/client/attachments.js";
 import { DesktopHostClient } from "../src/client/desktop.js";
 import { openHostClient } from "../src/client/factory.js";
 import { MockHostClient } from "../src/client/mock.js";
@@ -147,6 +148,70 @@ test("desktop client sendPrompt polls transcript until a reply", async () => {
   assert.equal(result.reply, "Ada reply: status only");
   assert.ok(state.calls.some((call) => call.url.endsWith("/api/sendPrompt")));
   assert.ok(state.calls.every((call) => call.hasRoutingHeader && call.hasBearer));
+});
+
+test("desktop getTranscript writes a local file from readAttachmentImage", async () => {
+  resetAttachmentCacheForTests();
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  let imageCalls = 0;
+  const impl: typeof fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const method = (init?.method ?? "GET").toUpperCase();
+    const headers = new Headers(init?.headers);
+    const hasRoutingHeader = headers.get(ROUTING_HEADER) === ROUTING_VALUE;
+    const hasBearer = headers.get("authorization") === `Bearer ${TOKEN}`;
+    if (method === "GET") return json(404, { error: "not found" });
+    const parsed = new URL(url);
+    if (!parsed.pathname.startsWith("/v1/sand/api/")) {
+      return json(404, { error: "not the gateway" });
+    }
+    if (!hasRoutingHeader || !hasBearer) return json(404, { error: "missing routing" });
+    const command = parsed.pathname.slice("/v1/sand/api/".length);
+    if (command === "listAgents") {
+      return json(200, [{ id: ADA_ID, name: "Ada", isGroup: false }]);
+    }
+    if (command === "getAgentTranscriptTail") {
+      return json(200, {
+        entries: [
+          {
+            id: "entry-photo",
+            kind: "user-attachment",
+            fileName: "app.png",
+            mime: "image/png",
+            attachmentPaths: ["https://files.example/app.png"],
+            timestampMs: 1,
+          },
+        ],
+      });
+    }
+    if (command === "readAttachmentImage") {
+      imageCalls += 1;
+      const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+      assert.equal(body.agentId, ADA_ID);
+      assert.ok(
+        body.fileName === "app.png" ||
+          body.id === "entry-photo" ||
+          body.entryId === "entry-photo" ||
+          (Array.isArray(body.attachmentPaths) && body.attachmentPaths.length > 0),
+      );
+      return json(200, { bytes: png.toString("base64") });
+    }
+    return json(404, { error: "unknown command" });
+  };
+  const turns = await withFetch(impl, () => desktopClient().getTranscript(ADA_ID));
+  const image = turns[0]?.images?.[0];
+  assert.equal(image?.fileName, "app.png");
+  assert.ok(image?.path);
+  const { readFileSync, existsSync } = await import("node:fs");
+  assert.equal(existsSync(image.path), true);
+  assert.deepEqual(readFileSync(image.path), png);
+  const firstCalls = imageCalls;
+  assert.ok(firstCalls >= 1);
+  await withFetch(impl, () => desktopClient().getTranscript(ADA_ID));
+  assert.equal(imageCalls, firstCalls, "idle poll must not re-download");
 });
 
 test("desktop 404 without routing headers", async () => {
