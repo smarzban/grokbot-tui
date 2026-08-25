@@ -213,7 +213,7 @@ test("user text that fits the pane is a single right-hugging left-aligned line",
   assert.ok(bodies[0]?.text.startsWith(" "));
 });
 
-test("only strings longer than 80% of the pane wrap, on both sides", () => {
+test("only strings longer than 90% of the pane wrap, on both sides", () => {
   const pane = 40;
   const col = wrapWidth(pane);
   assert.equal(col, Math.max(1, Math.floor(pane * MESSAGE_WRAP_RATIO)));
@@ -312,7 +312,7 @@ test("layout has no bubble chrome on turns; 1:1 uses two empties, rooms one", ()
   );
   assert.deepEqual(
     oneToOne.map((row) => row.kind),
-    ["body", "empty", "empty", "body", "empty"],
+    ["body", "empty", "empty", "body"],
   );
 
   const room = turnsToRows(
@@ -329,14 +329,15 @@ test("layout has no bubble chrome on turns; 1:1 uses two empties, rooms one", ()
   );
   assert.deepEqual(
     room.map((row) => row.kind),
-    ["speaker", "body", "empty", "speaker", "body", "empty"],
+    ["speaker", "body", "empty", "speaker", "body"],
   );
 });
 
-test("long user and assistant lines wrap at 80% of the pane; short user still right-hugs", () => {
+test("long user and assistant lines wrap at 90% of the pane; short user still right-hugs", () => {
   const pane = 40;
   const col = wrapWidth(pane);
-  assert.equal(col, 32);
+  assert.equal(MESSAGE_WRAP_RATIO, 0.9);
+  assert.equal(col, 36);
   const long = "y".repeat(col + 8);
   const rows = turnsToRows(
     [
@@ -354,7 +355,7 @@ test("long user and assistant lines wrap at 80% of the pane; short user still ri
   assert.ok(botBodies.every((row) => row.text.length <= col));
   assert.ok(
     userBodies.some((row) => row.text.length === pane && row.text.trimStart().length === col),
-    "longest user line is the 80% column, padded so it sits on the right",
+    "longest user line is the 90% column, padded so it sits on the right",
   );
   assert.ok(botBodies.some((row) => row.text.length === col));
   assert.equal(firstContentCol(botBodies[0]?.text ?? "x"), 0);
@@ -377,10 +378,10 @@ test("consecutive same-side turns stack with no empty; user→assistant still ha
   );
   assert.deepEqual(
     twoBots.map((row) => row.kind),
-    ["body", "body", "empty"],
+    ["body", "body"],
   );
   assert.equal(
-    twoBots.some((row, i) => row.kind === "empty" && i < twoBots.length - 1),
+    twoBots.some((row) => row.kind === "empty"),
     false,
     "no blank line between consecutive assistant turns",
   );
@@ -395,7 +396,7 @@ test("consecutive same-side turns stack with no empty; user→assistant still ha
   );
   assert.deepEqual(
     twoUsers.map((row) => row.kind),
-    ["body", "body", "empty"],
+    ["body", "body"],
   );
 
   const userThenBot = turnsToRows(
@@ -408,7 +409,7 @@ test("consecutive same-side turns stack with no empty; user→assistant still ha
   );
   assert.deepEqual(
     userThenBot.map((row) => row.kind),
-    ["body", "empty", "empty", "body", "empty"],
+    ["body", "empty", "empty", "body"],
   );
 
   const roomSameSide = turnsToRows(
@@ -425,8 +426,23 @@ test("consecutive same-side turns stack with no empty; user→assistant still ha
   );
   assert.deepEqual(
     roomSameSide.map((row) => row.kind),
-    ["speaker", "body", "speaker", "body", "empty"],
+    ["speaker", "body", "speaker", "body"],
   );
+});
+
+test("idle transcript has a single bottom pad, not a trailing empty row", () => {
+  assert.equal(transcriptPadBottom(false), 1);
+  assert.equal(transcriptPadBottom(true), 0);
+  const idle = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "hi" },
+      { id: "2", role: "assistant", speaker: "Dev", text: "hello" },
+    ],
+    40,
+    "Dev",
+  );
+  assert.equal(idle.at(-1)?.kind, "body");
+  assert.equal(idle.filter((row) => row.kind === "empty").length, 2);
 });
 
 test("1:1 rows have no speaker labels; rooms still do", () => {

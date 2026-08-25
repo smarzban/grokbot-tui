@@ -25,9 +25,9 @@ export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
 }
 
 /** Both user and assistant wrap to this fraction of the transcript pane. */
-export const MESSAGE_WRAP_RATIO = 0.8;
+export const MESSAGE_WRAP_RATIO = 0.9;
 
-/** Wrap width = 80% of the pane. User turns are then shifted as a block (see alignBlockEnd). */
+/** Wrap width = 90% of the pane. User turns are then shifted as a block (see alignBlockEnd). */
 export function wrapWidth(paneWidth: number): number {
   return Math.max(1, Math.floor(Math.max(0, paneWidth) * MESSAGE_WRAP_RATIO));
 }
@@ -232,12 +232,7 @@ export function turnsToRows(
     }
     rows.push(...pending);
     const next = visible[i + 1];
-    if (!next) {
-      // One blank row under the last line so it does not sit on the frame.
-      rows.push({ kind: "empty", text: "", role: turn.role, align });
-      continue;
-    }
-    if (next.role === turn.role) continue;
+    if (!next || next.role === turn.role) continue;
     // Opposite side: 1:1 needs two blank rows (no names); rooms one.
     const gap = ctx.isGroup === true ? 1 : 2;
     for (let g = 0; g < gap; g++) {
