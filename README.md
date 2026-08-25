@@ -17,11 +17,12 @@ Command names and response shapes come from those libraries / the live host. The
 - While idle, refreshes the transcript and roster so Grok Bot app messages and `isRunning` answering indicators show up without sending from the TUI
 - PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
 - Images from the host (`user-attachment` / SendMessage `attachment`) show as `[image] filename` on the correct side
+- In a room, `@` plus a prefix lists matching members; Tab or Enter inserts `@Name ` as plain text
 - Switch bots or rooms without quitting
 - Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
 - Uses the terminal alternate screen so the transcript stays framed instead of spilling into scrollback
 
-Out of scope: creating or deleting rooms, seating members, streaming, creating or deleting agents, Slack, avatars, rich markdown. Inline Kitty graphics are not used; image turns use a placeholder so layout stays stable. `@Name` in a room compose box is ordinary text (same as the Grok Bot app).
+Out of scope: creating or deleting rooms, seating members, streaming, creating or deleting agents, Slack, avatars, rich markdown. Inline Kitty graphics are not used; image turns use a placeholder so layout stays stable.
 
 ## Install
 
@@ -59,7 +60,7 @@ Other flags: `--agent NAME` (skip the picker if that bot or room exists), `--hel
 | ↑ ↓ / j k, Enter | picker | Move / open |
 | PgUp / PgDn / wheel / ↑ ↓ / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll) |
 | Home / End | chat | Jump to oldest / latest |
-| Enter | chat | Send |
+| Tab / Enter / ↑ ↓ / Esc | chat mention menu | Complete, move, or close (does not send or leave the room) |
 | Esc | chat | Cancel wait, or back to the picker |
 | Ctrl+b | chat | Switch bot / room |
 | r | picker / error | Retry / refresh |

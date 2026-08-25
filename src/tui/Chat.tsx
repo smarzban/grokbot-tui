@@ -20,6 +20,16 @@ import {
   scrollDeltaForButton,
   WHEEL_LINE_DELTA,
 } from "./mouse.js";
+import {
+  completeMention,
+  filterMentions,
+  MAX_VISIBLE_MENTIONS,
+  mentionMenuOpen,
+  mentionNames,
+  mentionQuery,
+  visibleMentions,
+  wrapMentionIndex,
+} from "./mentions.js";
 import { answeringIndicator, busyMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
 import { DEFAULT_POLL_MS, shouldPollTranscript, transcriptChanged } from "./poll.js";
 
@@ -80,6 +90,8 @@ export function Chat({
   const [answeringLine, setAnsweringLine] = useState<string | null>(() =>
     answeringIndicator(busyMemberNames(agent, roster)),
   );
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -102,13 +114,25 @@ export function Chat({
     [displayName, isGroup, liveAgent.members, liveRoster],
   );
   const headerMembers = memberListLabel(liveAgent, liveRoster);
+  const mentionOptions = useMemo(
+    () => (isGroup ? mentionNames(liveAgent, liveRoster) : []),
+    [isGroup, liveAgent, liveRoster],
+  );
+  const mentionQ = isGroup ? mentionQuery(draft) : null;
+  const mentionMatches = mentionQ ? filterMentions(mentionOptions, mentionQ.prefix) : [];
+  const mentionQueryKey = mentionQ ? `${mentionQ.start}:${mentionQ.prefix}` : "";
+  const menuOpen = mentionMenuOpen(mentionMatches.length, mentionDismissed);
+  const mentionShown = menuOpen ? visibleMentions(mentionMatches, mentionIndex) : [];
 
   const { width, height } = termSize(columns, rows);
   const inner = innerWidth(width);
   const transcriptH = Math.max(3, height - chromeRows());
   const lineBudget = Math.max(
     1,
-    transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0) - (answeringLine ? 1 : 0),
+    transcriptInnerHeight(height) -
+      (status.kind === "error" ? 1 : 0) -
+      (answeringLine ? 1 : 0) -
+      (menuOpen ? Math.min(mentionMatches.length, MAX_VISIBLE_MENTIONS) : 0),
   );
   const allRows = useMemo(
     () => turnsToRows(turns, inner, labelCtx),
@@ -162,6 +186,11 @@ export function Chat({
     busySigRef.current = busyNamesSignature(names);
     setAnsweringLine(answeringIndicator(names));
   }, [agent, roster]);
+
+  useEffect(() => {
+    setMentionDismissed(false);
+    setMentionIndex(0);
+  }, [mentionQueryKey]);
 
   useEffect(() => {
     if (status.kind === "loading") return;
@@ -288,6 +317,27 @@ export function Chat({
       }
       return;
     }
+    if (menuOpen) {
+      if (key.escape) {
+        setMentionDismissed(true);
+        return;
+      }
+      if (key.upArrow) {
+        setMentionIndex((index) => wrapMentionIndex(index, mentionMatches.length, -1));
+        return;
+      }
+      if (key.downArrow) {
+        setMentionIndex((index) => wrapMentionIndex(index, mentionMatches.length, 1));
+        return;
+      }
+      if (key.tab || key.return) {
+        const pick =
+          mentionMatches.length === 1 ? mentionMatches[0] : mentionMatches[mentionIndex] ?? mentionMatches[0];
+        if (pick) setDraft((value) => completeMention(value, pick));
+        return;
+      }
+    }
+    if (key.tab) return;
     if (key.upArrow) {
       setScrollOffset((offset) => applyScrollDelta(offset, WHEEL_LINE_DELTA, rowCount, lineBudget));
       return;
@@ -422,6 +472,17 @@ export function Chat({
             {answeringLine}
           </Text>
         ) : null}
+        {menuOpen
+          ? mentionShown.map((name) => {
+              const selected = name === mentionMatches[mentionIndex];
+              return (
+                <Text key={name} inverse={selected} color={selected ? undefined : "yellow"} wrap="truncate">
+                  {selected ? "› @" : "  @"}
+                  {name}
+                </Text>
+              );
+            })
+          : null}
       </Box>
 
       <Box
@@ -448,7 +509,9 @@ export function Chat({
         <Text dimColor>
           {busy
             ? "wheel/PgUp/Dn scroll  ·  Esc cancel  ·  Ctrl+c quit"
-            : "wheel/PgUp/Dn scroll  ·  Enter send  ·  Esc list  ·  Ctrl+c quit"}
+            : menuOpen
+              ? "Tab/Enter insert  ·  ↑↓  ·  Esc close"
+              : "wheel/PgUp/Dn scroll  ·  Enter send  ·  Esc list  ·  Ctrl+c quit"}
         </Text>
       </Box>
     </Box>
