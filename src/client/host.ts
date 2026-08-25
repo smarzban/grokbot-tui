@@ -69,8 +69,8 @@ export class HttpHostClient implements HostClient {
     return this.#fetch ?? ((input, init) => globalThis.fetch(input, init));
   }
 
-  #call(method: string, body: unknown = {}): Promise<unknown> {
-    return gatewayPost(this.#session, method, body, this.#fetchImpl());
+  #call(method: string, body: unknown = {}, signal?: AbortSignal): Promise<unknown> {
+    return gatewayPost(this.#session, method, body, this.#fetchImpl(), signal);
   }
 
   async listAgents(): Promise<Agent[]> {
@@ -111,17 +111,35 @@ export class HttpHostClient implements HostClient {
     const startedAt = Date.now();
     let beforeCount = 0;
     let beforeReply: string | undefined;
+    let interruptIssued = false;
+    const maybeInterrupt = async (): Promise<void> => {
+      if (interruptIssued) return;
+      interruptIssued = true;
+      await this.interrupt(input.agentId).catch(() => undefined);
+    };
+    const onAbort = (): void => {
+      void maybeInterrupt();
+    };
+    input.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       if (wait) {
         const prior = await this.getTranscript(input.agentId);
         beforeCount = assistantCount(prior);
         beforeReply = lastAssistantText(prior);
+        if (input.signal?.aborted) {
+          await maybeInterrupt();
+          return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
+        }
       }
-      const sent = await this.#call("sendPrompt", {
-        agentId: input.agentId,
-        prompt: input.prompt,
-        clientNonce: randomUUID(),
-      });
+      const sent = await this.#call(
+        "sendPrompt",
+        {
+          agentId: input.agentId,
+          prompt: input.prompt,
+          clientNonce: randomUUID(),
+        },
+        input.signal,
+      );
       const accepted =
         sent != null && typeof sent === "object" && "accepted" in sent
           ? (sent as { accepted?: boolean }).accepted !== false
@@ -131,7 +149,12 @@ export class HttpHostClient implements HostClient {
         return { accepted, status: "idle", elapsedMs: Date.now() - startedAt };
       }
 
-      const reply = await this.#waitForReply(input, beforeCount, beforeReply);
+      if (input.signal?.aborted) {
+        await maybeInterrupt();
+        return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
+      }
+
+      const reply = await this.#waitForReply(input, beforeCount, beforeReply, maybeInterrupt);
       if (reply.status === "cancelled") {
         return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
       }
@@ -143,10 +166,12 @@ export class HttpHostClient implements HostClient {
       };
     } catch (err) {
       if (input.signal?.aborted) {
-        await this.interrupt(input.agentId).catch(() => undefined);
+        await maybeInterrupt();
         return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
       }
       throw mapSessionError(err, this.#session);
+    } finally {
+      input.signal?.removeEventListener("abort", onAbort);
     }
   }
 
@@ -166,15 +191,12 @@ export class HttpHostClient implements HostClient {
     input: SendPromptInput,
     beforeCount: number,
     beforeReply: string | undefined,
+    maybeInterrupt: () => Promise<void>,
   ): Promise<{ status: SendResult["status"]; text?: string }> {
     const timeoutMs = input.timeoutMs;
     const startedAt = Date.now();
-    let interrupted = false;
     const cancel = async (): Promise<{ status: "cancelled" }> => {
-      if (!interrupted) {
-        interrupted = true;
-        await this.interrupt(input.agentId).catch(() => undefined);
-      }
+      await maybeInterrupt();
       return { status: "cancelled" };
     };
     while (true) {

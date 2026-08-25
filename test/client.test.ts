@@ -260,6 +260,43 @@ test("gateway client sendPrompt polls until idle and returns the last reply", as
   assert.equal(history[1]?.role, "assistant");
 });
 
+test("gateway client abort during a hung sendPrompt POST interrupts once", async () => {
+  const host = createScriptedHost();
+  let interruptCalls = 0;
+  const inner = createScriptedFetch(host);
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const marker = "/api/";
+    const idx = url.lastIndexOf(marker);
+    const command = idx >= 0 ? url.slice(idx + marker.length) : "";
+    if (command === "sendPrompt") {
+      await delay(60_000, undefined, { signal: init?.signal ?? undefined });
+    }
+    if (command === "interruptAgentRun") {
+      interruptCalls += 1;
+    }
+    return inner(input, init);
+  };
+  const client = new HttpHostClient({
+    gatewayUrl: GATEWAY,
+    token: host.token,
+    source: "gateway",
+    fetch: fetchImpl,
+  });
+  const controller = new AbortController();
+  const pending = client.sendPrompt({
+    agentId: ADA_ID,
+    prompt: "slow",
+    wait: true,
+    signal: controller.signal,
+  });
+  await delay(20);
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.status, "cancelled");
+  assert.equal(interruptCalls, 1);
+});
+
 test("gateway client maps a down host", async () => {
   const host = createScriptedHost({ down: true });
   const client = clientFor(host);

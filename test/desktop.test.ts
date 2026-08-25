@@ -256,6 +256,13 @@ test("openHostClient ignores a URL without a token and uses desktop", async () =
     }),
   });
   assert.equal(client.source, "desktop");
+  const state = { calls: [] as RecordedCall[] };
+  await withFetch(createDesktopFetch(state), async () => {
+    const agents = await client.listAgents();
+    assert.equal(agents[0]?.name, "Ada");
+  });
+  assert.ok(state.calls.some((call) => call.url.startsWith(`${BASE}/api/`)));
+  assert.equal(state.calls.some((call) => call.url.includes("stale.example")), false);
 });
 
 test("listAgents fails host-down on the mock path", async () => {

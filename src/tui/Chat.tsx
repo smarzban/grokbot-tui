@@ -46,7 +46,7 @@ import {
 } from "./mentions.js";
 import { isCtrlKey } from "./keys.js";
 import { answeringIndicator, busyMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
-import { DEFAULT_POLL_MS, shouldPollTranscript, transcriptChanged } from "./poll.js";
+import { DEFAULT_POLL_MS, mergePolledTranscript, shouldPollTranscript } from "./poll.js";
 
 type Props = {
   client: HostClient;
@@ -291,7 +291,7 @@ export function Chat({
           const history = await client.getTranscript(agentId);
           if (cancelled) return;
           if (shouldPollTranscript(statusRef.current.kind)) {
-            setTurns((prev) => (transcriptChanged(prev, history) ? history : prev));
+            setTurns((prev) => mergePolledTranscript(prev, history));
           }
         } catch {
           // Keep the last good transcript; a single failed poll is not an error overlay.
@@ -425,7 +425,7 @@ export function Chat({
     if (key.tab) return;
     if (key.escape) {
       if (current.kind === "sending") {
-        // Client owns interruptAgentRun when the wait loop sees this abort.
+        // Abort cancels the fetch and triggers interruptAgentRun immediately.
         abortRef.current?.abort();
         return;
       }

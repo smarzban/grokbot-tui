@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChatTurn } from "../src/client/types.js";
 import {
+  mergePolledTranscript,
   parsePollMs,
   shouldPollTranscript,
   transcriptChanged,
@@ -38,6 +39,21 @@ test("shouldPollTranscript skips sending and initial loading", () => {
 test("transcriptChanged notices earlier-turn edits when length is unchanged", () => {
   const earlier = { ...you, text: "hi there" };
   assert.equal(transcriptChanged([you, bot], [earlier, bot]), true);
+});
+
+test("mergePolledTranscript keeps uncommitted local user turns", () => {
+  const local: ChatTurn = { id: "local-1", role: "user", speaker: "you", text: "@Dev ship it" };
+  const host: ChatTurn[] = [{ id: "1", role: "assistant", speaker: "Ada", text: "old reply" }];
+  assert.deepEqual(mergePolledTranscript([...host, local], host), [...host, local]);
+});
+
+test("mergePolledTranscript drops local turns once the host commits them", () => {
+  const local: ChatTurn = { id: "local-1", role: "user", speaker: "you", text: "hi" };
+  const host: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "hi" },
+    { id: "2", role: "assistant", speaker: "Ada", text: "hello" },
+  ];
+  assert.deepEqual(mergePolledTranscript([local], host), host);
 });
 
 test("parsePollMs defaults to 1500 and rejects tiny intervals", () => {

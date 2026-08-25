@@ -28,3 +28,23 @@ export function transcriptChanged(prev: ChatTurn[], next: ChatTurn[]): boolean {
   }
   return false;
 }
+
+function isLocalPendingTurn(turn: ChatTurn): boolean {
+  return turn.id.startsWith("local-") && turn.role === "user";
+}
+
+/** Apply a polled host tail while keeping uncommitted optimistic user turns. */
+export function mergePolledTranscript(prev: ChatTurn[], next: ChatTurn[]): ChatTurn[] {
+  if (!transcriptChanged(prev, next)) return prev;
+
+  const pending: ChatTurn[] = [];
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const turn = prev[i];
+    if (!turn || !isLocalPendingTurn(turn)) break;
+    const committed = next.some((host) => host.role === "user" && host.text === turn.text);
+    if (committed) break;
+    pending.unshift(turn);
+  }
+  if (pending.length === 0) return next;
+  return [...next, ...pending];
+}
