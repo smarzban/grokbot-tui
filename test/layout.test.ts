@@ -4,6 +4,7 @@ import type { ChatTurn } from "../src/client/types.js";
 import {
   adjustScrollOffset,
   agentLabel,
+  alignBlockEnd,
   composeVisible,
   speakerLabel,
   takeLastRows,
@@ -122,20 +123,59 @@ test("user rows align end and assistant rows align start", () => {
   );
 });
 
-test("short user lines hug the right edge via padStart", () => {
-  const turns: ChatTurn[] = [
-    { id: "1", role: "user", speaker: "you", text: "hi" },
-    { id: "2", role: "assistant", speaker: "send-message", text: "hello" },
-  ];
-  const rows = turnsToRows(turns, 40, "Dev");
-  const hi = rows.find((row) => row.kind === "body" && row.align === "end");
-  const hello = rows.find((row) => row.kind === "body" && row.align === "start");
+function firstContentCol(text: string): number {
+  return text.search(/\S/);
+}
+
+test("short user line and wrapped user turn share one left column; assistant starts at 0", () => {
+  const short = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "hi" },
+      { id: "2", role: "assistant", speaker: "Dev", text: "hello" },
+    ],
+    40,
+    "Dev",
+  );
+  const hi = short.find((row) => row.kind === "body" && row.align === "end");
+  const hello = short.find((row) => row.kind === "body" && row.align === "start");
   assert.ok(hi && hello);
+  assert.equal(hi.text.trimStart(), "hi");
   assert.equal(hi.text.length, 40);
-  assert.ok(hi.text.startsWith(" "));
-  assert.ok(hi.text.endsWith("hi"));
+  assert.equal(firstContentCol(hi.text), 38);
   assert.equal(hello.text, "hello");
-  assert.equal(hello.text.startsWith(" "), false);
+  assert.equal(firstContentCol(hello.text), 0);
+
+  const wrapped = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "hello this is a longer message of mine" },
+      { id: "2", role: "assistant", speaker: "Dev", text: "ok" },
+    ],
+    20,
+    "Dev",
+  );
+  const userBodies = wrapped.filter((row) => row.kind === "body" && row.align === "end");
+  const bot = wrapped.find((row) => row.kind === "body" && row.align === "start");
+  assert.ok(userBodies.length > 1, "user turn should wrap onto several lines");
+  const starts = userBodies.map((row) => firstContentCol(row.text));
+  assert.ok(starts.every((col) => col === starts[0]));
+  assert.ok((starts[0] ?? -1) >= 0);
+  const contents = userBodies.map((row) => row.text.trimStart());
+  const longest = Math.max(...contents.map((line) => line.length));
+  assert.ok(
+    userBodies.some((row) => row.text.length === 20 && row.text.trimStart().length === longest),
+    "longest user line should meet the right edge",
+  );
+  assert.ok(
+    userBodies.some((row) => row.text.trimStart().length < longest),
+    "shorter wrapped lines stay left-aligned in the block, not independently right-padded",
+  );
+  assert.equal(bot?.text, "ok");
+  assert.equal(firstContentCol(bot?.text ?? ""), 0);
+});
+
+test("alignBlockEnd pads every line by the same amount", () => {
+  assert.deepEqual(alignBlockEnd(["hi", "hello"], 8), ["   hi", "   hello"]);
+  assert.deepEqual(alignBlockEnd(["abcdefgh"], 8), ["abcdefgh"]);
 });
 
 test("empty thinking turns are skipped but send-message bodies are kept", () => {

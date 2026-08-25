@@ -24,7 +24,7 @@ export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
   return role === "user" ? "end" : "start";
 }
 
-/** Wrap to the full pane. User lines are then padStart'd to this same width. */
+/** Wrap to the full pane. User turns are then shifted as a block (see alignBlockEnd). */
 export function wrapWidth(paneWidth: number): number {
   return Math.max(1, paneWidth);
 }
@@ -39,6 +39,22 @@ export function alignEnd(text: string, width: number): string {
   if (width < 1) return text;
   if (text.length >= width) return text;
   return text.padStart(width, " ");
+}
+
+/**
+ * iMessage-style user bubble: every line keeps its own left edge, and the
+ * block as a whole is shifted so the longest line meets `width`.
+ */
+export function alignBlockEnd(lines: string[], width: number): string[] {
+  if (width < 1 || lines.length === 0) return lines;
+  let longest = 0;
+  for (const line of lines) {
+    if (line.length > longest) longest = line.length;
+  }
+  const pad = Math.max(0, width - longest);
+  if (pad === 0) return lines;
+  const prefix = " ".repeat(pad);
+  return lines.map((line) => prefix + line);
 }
 
 /** Word-wrap a single paragraph; hard-break tokens longer than width. */
@@ -141,10 +157,6 @@ export function speakerLabel(turn: ChatTurn, agentNameOrCtx: string | SpeakerCon
 
 export { imagePlaceholder } from "./images.js";
 
-function paint(text: string, align: TranscriptAlign, paneWidth: number): string {
-  return align === "end" ? alignEnd(text, paneWidth) : text;
-}
-
 export function turnsToRows(
   turns: ChatTurn[],
   width: number,
@@ -157,11 +169,11 @@ export function turnsToRows(
   for (const turn of turns) {
     if (!isVisibleChatTurn(turn)) continue;
     const align = turnAlign(turn.role);
+    const pending: TranscriptRow[] = [];
     if (ctx.isGroup === true) {
-      const label = speakerLabel(turn, ctx);
-      rows.push({
+      pending.push({
         kind: "speaker",
-        text: paint(label, align, paneWidth),
+        text: speakerLabel(turn, ctx),
         role: turn.role,
         align,
       });
@@ -171,9 +183,9 @@ export function turnsToRows(
     const images = mergeImages(turn.images ?? [], extracted.images);
     if (bodyText.trim().length > 0) {
       for (const line of wrapText(bodyText, bodyWidth)) {
-        rows.push({
+        pending.push({
           kind: "body",
-          text: paint(line, align, paneWidth),
+          text: line,
           role: turn.role,
           align,
         });
@@ -183,9 +195,9 @@ export function turnsToRows(
       const file = localImagePath(image);
       if (file) {
         const id = pictureKey(turn.id, index);
-        const label = paint(imagePlaceholder(image), align, paneWidth);
+        const label = imagePlaceholder(image);
         for (let slot = 0; slot < IMAGE_CELL_ROWS; slot++) {
-          rows.push({
+          pending.push({
             kind: "picture",
             text: slot === 0 ? label : "",
             role: turn.role,
@@ -196,15 +208,27 @@ export function turnsToRows(
           });
         }
       } else {
-        rows.push({
+        pending.push({
           kind: "image",
-          text: paint(imagePlaceholder(image), align, paneWidth),
+          text: imagePlaceholder(image),
           role: turn.role,
           align,
           image,
         });
       }
     }
+    if (align === "end") {
+      const padded = alignBlockEnd(
+        pending.map((row) => row.text),
+        paneWidth,
+      );
+      for (let i = 0; i < pending.length; i++) {
+        const row = pending[i];
+        const text = padded[i];
+        if (row && text != null) pending[i] = { ...row, text };
+      }
+    }
+    rows.push(...pending);
     // 1:1 has no speaker labels, so two blank rows keep bubbles apart.
     // Rooms already have names — one blank row is enough.
     const gap = ctx.isGroup === true ? 1 : 2;
