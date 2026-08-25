@@ -1,12 +1,16 @@
 {
-  "name": "grok-bot-tui",
+  "name": "grokbot-tui",
   "version": "0.1.0",
   "description": "Unofficial terminal UI for chatting with Grok Bot agents",
   "type": "module",
-  "private": true,
   "bin": {
     "grok-tui": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -14,7 +18,8 @@
     "start": "tsx src/cli.tsx",
     "start:mock": "tsx src/cli.tsx --mock",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "prepublishOnly": "npm run build",
     "test": "tsx --test test/*.test.ts"
   },
   "keywords": [
@@ -26,8 +31,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://origin.cursor.com/git/smarzban/tmp-07d786a67e747d7d"
+    "url": "git+https://github.com/smarzban/grokbot-tui.git"
   },
+  "bugs": {
+    "url": "https://github.com/smarzban/grokbot-tui/issues"
+  },
+  "homepage": "https://github.com/smarzban/grokbot-tui#readme",
   "dependencies": {
     "dotenv": "^17.4.2",
     "ink": "^7.1.1",

@@ -1,7 +1,6 @@
 import { Box, Text, useWindowSize } from "ink";
 import { useCallback, useEffect, useState } from "react";
 import type { AppConfig } from "../config.js";
-import { probeAndList } from "../client/boot.js";
 import { openHostClient } from "../client/factory.js";
 import { HostClientError, type Agent, type HostClient, type HostErrorKind } from "../client/types.js";
 import { errorMessage } from "../redact.js";
@@ -65,7 +64,7 @@ export function App({ config, token, mock }: Props) {
       const next = await openHostClient({ config, token, mock });
       setClient(next);
       setBootNote("Loading agents…");
-      const roster = await probeAndList(next);
+      const roster = await next.listAgents();
       setAgents(roster);
       const fallback = pickDefault(roster, config.defaultAgent);
       if (fallback) {
@@ -134,6 +133,7 @@ export function App({ config, token, mock }: Props) {
       roster={agents}
       timeoutMs={config.waitTimeoutMs}
       pollMs={config.pollIntervalMs}
+      onRoster={setAgents}
       onSwitch={() => setScreen({ name: "picker" })}
     />
   );

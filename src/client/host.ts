@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { redact } from "../redact.js";
 import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
 import { isNotFoundError, mapHostError } from "./errors.js";
 import { gatewayPost, trimGatewayUrl, type GatewaySession } from "./http.js";
-import { redact } from "../redact.js";
 import {
   asAgentRow,
   assistantCount,
@@ -17,7 +17,6 @@ import {
   HostClientError,
   type Agent,
   type ChatTurn,
-  type Health,
   type HostClient,
   type HostSource,
   type SendPromptInput,
@@ -49,7 +48,7 @@ function mapSessionError(err: unknown, session: GatewaySession): HostClientError
 
 /**
  * Host client over our POST helper. Used for env URL+token and the desktop session.
- * Does not probe GET /health.
+ * Connectivity is listAgents — there is no health probe.
  */
 export class HttpHostClient implements HostClient {
   readonly source: HostSource;
@@ -70,12 +69,8 @@ export class HttpHostClient implements HostClient {
     return this.#fetch ?? ((input, init) => globalThis.fetch(input, init));
   }
 
-  #call(method: string, body: unknown = {}): Promise<unknown> {
-    return gatewayPost(this.#session, method, body, this.#fetchImpl());
-  }
-
-  async health(): Promise<Health> {
-    return { ok: true };
+  #call(method: string, body: unknown = {}, signal?: AbortSignal): Promise<unknown> {
+    return gatewayPost(this.#session, method, body, this.#fetchImpl(), signal);
   }
 
   async listAgents(): Promise<Agent[]> {
@@ -116,17 +111,35 @@ export class HttpHostClient implements HostClient {
     const startedAt = Date.now();
     let beforeCount = 0;
     let beforeReply: string | undefined;
+    let interruptIssued = false;
+    const maybeInterrupt = async (): Promise<void> => {
+      if (interruptIssued) return;
+      interruptIssued = true;
+      await this.interrupt(input.agentId).catch(() => undefined);
+    };
+    const onAbort = (): void => {
+      void maybeInterrupt();
+    };
+    input.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       if (wait) {
         const prior = await this.getTranscript(input.agentId);
         beforeCount = assistantCount(prior);
         beforeReply = lastAssistantText(prior);
+        if (input.signal?.aborted) {
+          await maybeInterrupt();
+          return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
+        }
       }
-      const sent = await this.#call("sendPrompt", {
-        agentId: input.agentId,
-        prompt: input.prompt,
-        clientNonce: randomUUID(),
-      });
+      const sent = await this.#call(
+        "sendPrompt",
+        {
+          agentId: input.agentId,
+          prompt: input.prompt,
+          clientNonce: randomUUID(),
+        },
+        input.signal,
+      );
       const accepted =
         sent != null && typeof sent === "object" && "accepted" in sent
           ? (sent as { accepted?: boolean }).accepted !== false
@@ -136,7 +149,12 @@ export class HttpHostClient implements HostClient {
         return { accepted, status: "idle", elapsedMs: Date.now() - startedAt };
       }
 
-      const reply = await this.#waitForReply(input, beforeCount, beforeReply);
+      if (input.signal?.aborted) {
+        await maybeInterrupt();
+        return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
+      }
+
+      const reply = await this.#waitForReply(input, beforeCount, beforeReply, maybeInterrupt);
       if (reply.status === "cancelled") {
         return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
       }
@@ -148,10 +166,12 @@ export class HttpHostClient implements HostClient {
       };
     } catch (err) {
       if (input.signal?.aborted) {
-        await this.interrupt(input.agentId).catch(() => undefined);
+        await maybeInterrupt();
         return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
       }
       throw mapSessionError(err, this.#session);
+    } finally {
+      input.signal?.removeEventListener("abort", onAbort);
     }
   }
 
@@ -171,14 +191,16 @@ export class HttpHostClient implements HostClient {
     input: SendPromptInput,
     beforeCount: number,
     beforeReply: string | undefined,
+    maybeInterrupt: () => Promise<void>,
   ): Promise<{ status: SendResult["status"]; text?: string }> {
     const timeoutMs = input.timeoutMs;
     const startedAt = Date.now();
+    const cancel = async (): Promise<{ status: "cancelled" }> => {
+      await maybeInterrupt();
+      return { status: "cancelled" };
+    };
     while (true) {
-      if (input.signal?.aborted) {
-        await this.interrupt(input.agentId).catch(() => undefined);
-        return { status: "cancelled" };
-      }
+      if (input.signal?.aborted) return cancel();
       const turns = await this.getTranscript(input.agentId);
       const count = assistantCount(turns);
       const text = lastAssistantText(turns);
@@ -191,8 +213,7 @@ export class HttpHostClient implements HostClient {
       try {
         await delay(250, undefined, { signal: input.signal });
       } catch {
-        await this.interrupt(input.agentId).catch(() => undefined);
-        return { status: "cancelled" };
+        return cancel();
       }
     }
   }

@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { probeAndList } from "../src/client/boot.js";
 import { resetAttachmentCacheForTests } from "../src/client/attachments.js";
-import { DesktopHostClient } from "../src/client/desktop.js";
 import { openHostClient } from "../src/client/factory.js";
+import { HttpHostClient } from "../src/client/host.js";
 import { MockHostClient } from "../src/client/mock.js";
-import { HostClientError, type HostClient } from "../src/client/types.js";
+import { HostClientError } from "../src/client/types.js";
 import { readConfig } from "../src/config.js";
 
 const ADA_ID = "11111111-1111-4111-8111-111111111111";
@@ -93,11 +92,12 @@ async function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<
   }
 }
 
-function desktopClient(): DesktopHostClient {
-  return new DesktopHostClient({
+function desktopClient(): HttpHostClient {
+  return new HttpHostClient({
     gatewayUrl: BASE,
     token: TOKEN,
     headers: { [ROUTING_HEADER]: ROUTING_VALUE },
+    source: "desktop",
   });
 }
 
@@ -129,10 +129,7 @@ test("desktop client preserves gateway URL path and sends session headers", asyn
 test("desktop client does not probe GET /health", async () => {
   const state = { calls: [] as RecordedCall[] };
   await withFetch(createDesktopFetch(state), async () => {
-    const client = desktopClient();
-    const health = await client.health();
-    assert.equal(health.ok, true);
-    await client.listAgents();
+    await desktopClient().listAgents();
   });
   assert.equal(state.calls.some((call) => call.method === "GET"), false);
   assert.equal(state.calls.some((call) => call.url.includes("/health")), false);
@@ -214,10 +211,11 @@ test("desktop getTranscript writes a local file from readAttachmentImage", async
 test("desktop 404 without routing headers", async () => {
   const state = { calls: [] as RecordedCall[] };
   await withFetch(createDesktopFetch(state), async () => {
-    const client = new DesktopHostClient({
+    const client = new HttpHostClient({
       gatewayUrl: BASE,
       token: TOKEN,
       headers: {},
+      source: "desktop",
     });
     await assert.rejects(() => client.listAgents(), (err: unknown) => {
       assert.ok(err instanceof HostClientError);
@@ -229,7 +227,7 @@ test("desktop 404 without routing headers", async () => {
   });
 });
 
-test("openHostClient uses DesktopHostClient for a desktop session", async () => {
+test("openHostClient uses desktop source for a desktop session", async () => {
   const client = await openHostClient({
     config: readConfig({}),
     env: {},
@@ -247,35 +245,29 @@ test("openHostClient uses DesktopHostClient for a desktop session", async () => 
   });
 });
 
-test("probeAndList continues when health 404s if listAgents works", async () => {
-  let listed = false;
-  const client: HostClient = {
-    source: "desktop",
-    async health() {
-      throw new HostClientError("unknown", "404 Not Found", { status: 404 });
-    },
-    async listAgents() {
-      listed = true;
-      return [{ id: ADA_ID, name: "Ada", isGroup: false }];
-    },
-    async getTranscript() {
-      return [];
-    },
-    async sendPrompt() {
-      return { accepted: true, status: "idle", elapsedMs: 0 };
-    },
-    async interrupt() {
-      return { hadActiveRun: false };
-    },
-  };
-  const agents = await probeAndList(client);
-  assert.equal(listed, true);
-  assert.equal(agents[0]?.name, "Ada");
+test("openHostClient ignores a URL without a token and uses desktop", async () => {
+  const client = await openHostClient({
+    config: { gatewayUrl: "http://stale.example:1340", mock: false },
+    env: {},
+    loadDesktop: async () => ({
+      gatewayUrl: BASE,
+      token: TOKEN,
+      headers: { [ROUTING_HEADER]: ROUTING_VALUE },
+    }),
+  });
+  assert.equal(client.source, "desktop");
+  const state = { calls: [] as RecordedCall[] };
+  await withFetch(createDesktopFetch(state), async () => {
+    const agents = await client.listAgents();
+    assert.equal(agents[0]?.name, "Ada");
+  });
+  assert.ok(state.calls.some((call) => call.url.startsWith(`${BASE}/api/`)));
+  assert.equal(state.calls.some((call) => call.url.includes("stale.example")), false);
 });
 
-test("probeAndList still fails host-down on the mock path", async () => {
+test("listAgents fails host-down on the mock path", async () => {
   const mock = new MockHostClient({ hostDown: true });
-  await assert.rejects(() => probeAndList(mock), (err: unknown) => {
+  await assert.rejects(() => mock.listAgents(), (err: unknown) => {
     assert.ok(err instanceof HostClientError);
     assert.equal(err.kind, "host-down");
     return true;

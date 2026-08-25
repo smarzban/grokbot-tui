@@ -54,6 +54,7 @@ export async function gatewayPost(
   method: string,
   body: unknown = {},
   fetchImpl: typeof fetch = globalThis.fetch,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const url = `${trimGatewayUrl(session.gatewayUrl)}/api/${method}`;
   const headers: Record<string, string> = {
@@ -65,6 +66,7 @@ export async function gatewayPost(
     method: "POST",
     headers,
     body: JSON.stringify(body ?? {}),
+    ...(signal ? { signal } : {}),
   });
   const data = await readJson(res);
   if (!res.ok) {

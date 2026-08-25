@@ -172,7 +172,7 @@ test("asAgentRow keeps group memberIds and enrichRoster fills names from the bot
 
 test("mock host-down and missing-auth", async () => {
   const down = new MockHostClient({ hostDown: true });
-  await assert.rejects(() => down.health(), (err: unknown) => {
+  await assert.rejects(() => down.listAgents(), (err: unknown) => {
     assert.ok(err instanceof HostClientError);
     assert.equal(err.kind, "host-down");
     return true;
@@ -190,8 +190,6 @@ test("mock host-down and missing-auth", async () => {
 test("gateway client lists agents through a mock host", async () => {
   const host = createScriptedHost();
   const client = clientFor(host);
-  const health = await client.health();
-  assert.equal(health.ok, true);
   const agents = await client.listAgents();
   assert.equal(agents.length, 1);
   assert.equal(agents[0]?.name, ADA_NAME);
@@ -213,7 +211,6 @@ test("gateway client does not probe GET /health", async () => {
     source: "gateway",
     fetch: fetchImpl,
   });
-  await client.health();
   await client.listAgents();
   assert.equal(gets, 0);
 });
@@ -263,6 +260,43 @@ test("gateway client sendPrompt polls until idle and returns the last reply", as
   assert.equal(history[1]?.role, "assistant");
 });
 
+test("gateway client abort during a hung sendPrompt POST interrupts once", async () => {
+  const host = createScriptedHost();
+  let interruptCalls = 0;
+  const inner = createScriptedFetch(host);
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const marker = "/api/";
+    const idx = url.lastIndexOf(marker);
+    const command = idx >= 0 ? url.slice(idx + marker.length) : "";
+    if (command === "sendPrompt") {
+      await delay(60_000, undefined, { signal: init?.signal ?? undefined });
+    }
+    if (command === "interruptAgentRun") {
+      interruptCalls += 1;
+    }
+    return inner(input, init);
+  };
+  const client = new HttpHostClient({
+    gatewayUrl: GATEWAY,
+    token: host.token,
+    source: "gateway",
+    fetch: fetchImpl,
+  });
+  const controller = new AbortController();
+  const pending = client.sendPrompt({
+    agentId: ADA_ID,
+    prompt: "slow",
+    wait: true,
+    signal: controller.signal,
+  });
+  await delay(20);
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.status, "cancelled");
+  assert.equal(interruptCalls, 1);
+});
+
 test("gateway client maps a down host", async () => {
   const host = createScriptedHost({ down: true });
   const client = clientFor(host);
@@ -289,7 +323,7 @@ test("gateway client maps missing/wrong auth", async () => {
 test("openHostClient uses env URL+token through the owned POST helper", async () => {
   const host = createScriptedHost();
   const client = await openHostClient({
-    config: { gatewayUrl: GATEWAY, hasToken: true, mock: false },
+    config: { gatewayUrl: GATEWAY, mock: false },
     token: host.token,
     env: {},
     fetch: createScriptedFetch(host),
@@ -316,7 +350,7 @@ test("openHostClient reports missing-auth without a gateway", async () => {
   await assert.rejects(
     () =>
       openHostClient({
-        config: { hasToken: false, mock: false },
+        config: { mock: false },
         env: {},
         loadDesktop: async () => null,
       }),
@@ -419,7 +453,6 @@ test("transcript parser keeps send-message message.images file:// url", () => {
   assert.equal(image?.width, 64);
   assert.equal(image?.height, 64);
   assert.equal(image?.path, undefined);
-  assert.ok(!image?.path?.startsWith("file:"));
 });
 
 test("transcript parser keeps user-attachment and send-message attachment", () => {

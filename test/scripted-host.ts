@@ -28,14 +28,12 @@ const ADA: ScriptedAgent = {
 
 export function createScriptedHost(overrides: Partial<ScriptedHost> = {}): ScriptedHost {
   return {
-    token: "test-gateway-token",
-    agents: [{ ...ADA }],
-    transcripts: new Map([[ADA.id, []]]),
-    busyPollsRemaining: new Map(),
-    ...overrides,
+    token: overrides.token ?? "test-gateway-token",
     agents: (overrides.agents ?? [{ ...ADA }]).map((agent) => ({ ...agent })),
     transcripts: overrides.transcripts ?? new Map([[ADA.id, []]]),
     busyPollsRemaining: overrides.busyPollsRemaining ?? new Map(),
+    ...(overrides.down != null ? { down: overrides.down } : {}),
+    ...(overrides.rejectAuth != null ? { rejectAuth: overrides.rejectAuth } : {}),
   };
 }
 

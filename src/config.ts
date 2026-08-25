@@ -1,5 +1,5 @@
 import { config as loadDotenv } from "dotenv";
-import { parsePollMs } from "./tui/poll.js";
+import { parsePollMs } from "./timing.js";
 
 const URL_KEYS = [
   "GROKBOT_GATEWAY_URL",
@@ -25,15 +25,10 @@ function firstNonEmpty(env: NodeJS.ProcessEnv, keys: readonly string[]): string 
 export type AppConfig = {
   /** Present only in memory. Never print. */
   gatewayUrl?: string;
-  hasToken: boolean;
   defaultAgent?: string;
   mock: boolean;
   waitTimeoutMs?: number;
   pollIntervalMs?: number;
-};
-
-export type ResolvedSecrets = {
-  token?: string;
 };
 
 export function loadDotEnvFile(): void {
@@ -42,7 +37,6 @@ export function loadDotEnvFile(): void {
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const gatewayUrl = firstNonEmpty(env, URL_KEYS);
-  const token = firstNonEmpty(env, TOKEN_KEYS);
   const defaultAgent = env.GROK_TUI_DEFAULT_AGENT?.trim() || undefined;
   const mock =
     env.GROK_TUI_MOCK === "1" ||
@@ -53,7 +47,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   return {
     ...(gatewayUrl ? { gatewayUrl } : {}),
-    hasToken: Boolean(token),
     ...(defaultAgent ? { defaultAgent } : {}),
     mock,
     pollIntervalMs: parsePollMs(env.GROK_TUI_POLL_MS),

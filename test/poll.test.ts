@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChatTurn } from "../src/client/types.js";
 import {
+  mergePolledTranscript,
   parsePollMs,
   shouldPollTranscript,
   transcriptChanged,
@@ -30,10 +31,39 @@ test("transcriptChanged is true when count, last id, or last text differs", () =
 
 test("shouldPollTranscript skips sending and initial loading", () => {
   assert.equal(shouldPollTranscript("idle"), true);
-  assert.equal(shouldPollTranscript("awaiting-user"), true);
   assert.equal(shouldPollTranscript("error"), true);
   assert.equal(shouldPollTranscript("sending"), false);
   assert.equal(shouldPollTranscript("loading"), false);
+});
+
+test("transcriptChanged notices earlier-turn edits when length is unchanged", () => {
+  const earlier = { ...you, text: "hi there" };
+  assert.equal(transcriptChanged([you, bot], [earlier, bot]), true);
+});
+
+test("mergePolledTranscript keeps uncommitted local user turns", () => {
+  const local: ChatTurn = { id: "local-1", role: "user", speaker: "you", text: "@Dev ship it" };
+  const host: ChatTurn[] = [{ id: "1", role: "assistant", speaker: "Ada", text: "old reply" }];
+  assert.deepEqual(mergePolledTranscript([...host, local], host), [...host, local]);
+});
+
+test("mergePolledTranscript survives an immediate stale poll after a room send", () => {
+  const beforeSend: ChatTurn[] = [{ id: "1", role: "assistant", speaker: "Dev", text: "earlier" }];
+  const optimistic: ChatTurn = { id: "local-42", role: "user", speaker: "you", text: "@Dev go" };
+  const staleTail = beforeSend;
+  assert.deepEqual(mergePolledTranscript([...beforeSend, optimistic], staleTail), [
+    ...beforeSend,
+    optimistic,
+  ]);
+});
+
+test("mergePolledTranscript drops local turns once the host commits them", () => {
+  const local: ChatTurn = { id: "local-1", role: "user", speaker: "you", text: "hi" };
+  const host: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "hi" },
+    { id: "2", role: "assistant", speaker: "Ada", text: "hello" },
+  ];
+  assert.deepEqual(mergePolledTranscript([local], host), host);
 });
 
 test("parsePollMs defaults to 1500 and rejects tiny intervals", () => {
