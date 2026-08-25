@@ -5,6 +5,7 @@ import { MockHostClient } from "../src/client/mock.js";
 import { openHostClient } from "../src/client/factory.js";
 import { HostClientError } from "../src/client/types.js";
 import { turnsFromHostTranscript } from "../src/client/transcript.js";
+import { transcriptChanged } from "../src/tui/poll.js";
 import { readConfig } from "../src/config.js";
 import { redact } from "../src/redact.js";
 import { ADA_ID, ADA_NAME, createScriptedFetch, createScriptedHost } from "./scripted-host.ts";
@@ -23,6 +24,22 @@ function clientFor(host: ReturnType<typeof createScriptedHost>, token = host.tok
   });
   return new GatewayHostClient(bot, "gateway", token);
 }
+
+test("mock host getTranscript picks up an appended app-side turn", async () => {
+  const mock = new MockHostClient();
+  const ada = (await mock.listAgents())[0];
+  assert.ok(ada);
+  const before = await mock.getTranscript(ada.id);
+  mock.appendTurn(ada.id, {
+    id: "app-1",
+    role: "assistant",
+    speaker: "send-message",
+    text: "from the Grok Bot app",
+  });
+  const after = await mock.getTranscript(ada.id);
+  assert.equal(transcriptChanged(before, after), true);
+  assert.equal(after.at(-1)?.text, "from the Grok Bot app");
+});
 
 test("mock host lists agents by name and id", async () => {
   const mock = new MockHostClient();

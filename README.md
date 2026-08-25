@@ -14,6 +14,7 @@ Command names and response shapes come from those libraries / the live host. The
 - Lists your bots by name (a short id prefix only if two names collide)
 - Opens a framed chat: agent name + idle/waiting in the header, clipped transcript, compose bar at the bottom
 - Sends a message, then **polls until the bot is idle** and shows the last reply (the host does not stream tokens)
+- While idle, refreshes the transcript so messages sent from the Grok Bot app show up without sending from the TUI
 - Switch bots without quitting
 - Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
 - Uses the terminal alternate screen so the transcript stays framed instead of spilling into scrollback
@@ -104,6 +105,7 @@ See `.env.example`. Never print, log, or commit `SAND_GATEWAY_TOKEN`, `gateway.j
 | `GROK_TUI_DEFAULT_AGENT` | Optional name or id to open first |
 | `GROK_TUI_MOCK=1` | Force the in-process mock host |
 | `GROK_TUI_WAIT_TIMEOUT_MS` | Optional cap on wait-for-reply (Esc still cancels) |
+| `GROK_TUI_POLL_MS` | Idle transcript poll interval (default 1500; minimum 250) |
 | `SAND_DATA_ROOT` | Override sand-data path for `gateway.json` discovery |
 
 ## Tests

@@ -73,6 +73,16 @@ export class MockHostClient implements HostClient {
     return cloneTurns(turns.slice(-limit));
   }
 
+  /** Simulate a turn that arrived from the Grok Bot app, not from this TUI. */
+  appendTurn(agentId: string, turn: ChatTurn): void {
+    this.#guard();
+    const agent = this.#agents.find((row) => row.id === agentId || row.name === agentId);
+    const id = agent?.id ?? agentId;
+    const existing = this.#transcripts.get(id) ?? [];
+    existing.push({ ...turn });
+    this.#transcripts.set(id, existing);
+  }
+
   async sendPrompt(input: SendPromptInput): Promise<SendResult> {
     this.#guard();
     const agent = this.#agents.find((row) => row.id === input.agentId || row.name === input.agentId);

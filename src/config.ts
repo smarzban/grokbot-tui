@@ -1,4 +1,5 @@
 import { config as loadDotenv } from "dotenv";
+import { parsePollMs } from "./tui/poll.js";
 
 const URL_KEYS = [
   "GROKBOT_GATEWAY_URL",
@@ -28,6 +29,7 @@ export type AppConfig = {
   defaultAgent?: string;
   mock: boolean;
   waitTimeoutMs?: number;
+  pollIntervalMs?: number;
 };
 
 export type ResolvedSecrets = {
@@ -54,6 +56,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     hasToken: Boolean(token),
     ...(defaultAgent ? { defaultAgent } : {}),
     mock,
+    pollIntervalMs: parsePollMs(env.GROK_TUI_POLL_MS),
     ...(waitTimeoutMs != null && Number.isFinite(waitTimeoutMs) && waitTimeoutMs > 0
       ? { waitTimeoutMs }
       : {}),

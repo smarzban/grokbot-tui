@@ -19,9 +19,16 @@ export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
   return role === "user" ? "end" : "start";
 }
 
-/** Right-side column for user bubbles; assistant uses the full inner width. */
+/** Max wrap width for user bodies (~55% of the pane). Assistant uses the full width. */
 export function userColumnWidth(width: number): number {
-  return Math.max(8, Math.floor(width * 0.72));
+  return Math.max(8, Math.floor(width * 0.55));
+}
+
+/** Pad `text` so it hugs the right edge of `width`. Does not truncate shorter labels. */
+export function alignEnd(text: string, width: number): string {
+  if (width < 1) return text;
+  if (text.length >= width) return text;
+  return text.padStart(width, " ");
 }
 
 /** Word-wrap a single paragraph; hard-break tokens longer than width. */
@@ -87,16 +94,27 @@ export function speakerLabel(turn: ChatTurn, agentName: string): string {
 }
 
 export function turnsToRows(turns: ChatTurn[], width: number, agentName: string): TranscriptRow[] {
-  const assistantWidth = Math.max(1, width);
-  const userWidth = userColumnWidth(width);
+  const paneWidth = Math.max(1, width);
+  const userWrap = userColumnWidth(paneWidth);
   const rows: TranscriptRow[] = [];
   for (const turn of turns) {
     if (!isVisibleChatTurn(turn)) continue;
     const align = turnAlign(turn.role);
-    const bodyWidth = align === "end" ? userWidth : assistantWidth;
-    rows.push({ kind: "speaker", text: speakerLabel(turn, agentName), role: turn.role, align });
+    const bodyWidth = align === "end" ? userWrap : paneWidth;
+    const label = speakerLabel(turn, agentName);
+    rows.push({
+      kind: "speaker",
+      text: align === "end" ? alignEnd(label, paneWidth) : label,
+      role: turn.role,
+      align,
+    });
     for (const line of wrapText(turn.text, bodyWidth)) {
-      rows.push({ kind: "body", text: line, role: turn.role, align });
+      rows.push({
+        kind: "body",
+        text: align === "end" ? alignEnd(line, paneWidth) : line,
+        role: turn.role,
+        align,
+      });
     }
     rows.push({ kind: "empty", text: "", role: turn.role, align });
   }

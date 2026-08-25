@@ -33,13 +33,13 @@ test("turnsToRows budgets a long reply by wrapped lines, not turns", () => {
     },
   ];
   const rows = turnsToRows(turns, 12, "Dev");
-  const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text);
+  const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text.trim());
   assert.deepEqual(speakers, ["you", "Dev"]);
   const body = rows.filter((row) => row.kind === "body");
   assert.ok(body.length > 1, "long assistant text should wrap onto several lines");
   const clipped = takeLastRows(rows, 4);
   assert.equal(clipped.length, 4);
-  assert.equal(clipped.some((row) => row.kind === "speaker" && row.text === "you"), false);
+  assert.equal(clipped.some((row) => row.kind === "speaker" && row.text.trim() === "you"), false);
   assert.equal(clipped.at(-1)?.kind, "body");
 });
 
@@ -63,7 +63,7 @@ test("visibleTranscript reserves a line when clipping a long last reply", () => 
   assert.equal(view.clipped, true);
   assert.equal(view.rows.length, 3);
   assert.equal(
-    view.rows.some((row) => row.kind === "speaker" && row.text === "you"),
+    view.rows.some((row) => row.kind === "speaker" && row.text.trim() === "you"),
     false,
   );
 });
@@ -114,7 +114,28 @@ test("user rows align end and assistant rows align start", () => {
   assert.ok(user.length > 0 && user.every((row) => row.align === "end"));
   assert.ok(bot.length > 0 && bot.every((row) => row.align === "start"));
   assert.equal(bot.find((row) => row.kind === "speaker")?.text, "Dev");
-  assert.equal(user.find((row) => row.kind === "speaker")?.text, "you");
+  assert.equal(user.find((row) => row.kind === "speaker")?.text.trim(), "you");
+  assert.ok((user.find((row) => row.kind === "speaker")?.text ?? "").startsWith(" "));
+});
+
+test("short user lines hug the right edge via padStart", () => {
+  const turns: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "hi" },
+    { id: "2", role: "assistant", speaker: "send-message", text: "hello" },
+  ];
+  const rows = turnsToRows(turns, 40, "Dev");
+  const you = rows.find((row) => row.kind === "speaker" && row.align === "end");
+  const hi = rows.find((row) => row.kind === "body" && row.align === "end");
+  const dev = rows.find((row) => row.kind === "speaker" && row.align === "start");
+  assert.ok(you && hi && dev);
+  assert.equal(you.text.length, 40);
+  assert.ok(you.text.startsWith(" "));
+  assert.ok(you.text.endsWith("you"));
+  assert.equal(hi.text.length, 40);
+  assert.ok(hi.text.startsWith(" "));
+  assert.ok(hi.text.endsWith("hi"));
+  assert.equal(dev.text, "Dev");
+  assert.equal(dev.text.startsWith(" "), false);
 });
 
 test("empty thinking turns are skipped but send-message bodies are kept", () => {

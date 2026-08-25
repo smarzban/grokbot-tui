@@ -6,18 +6,18 @@ import { errorMessage } from "../redact.js";
 import {
   chromeRows,
   composeVisible,
-  groupTranscriptRows,
   innerWidth,
   transcriptInnerHeight,
   turnsToRows,
-  userColumnWidth,
   visibleTranscript,
 } from "./layout.js";
+import { DEFAULT_POLL_MS, shouldPollTranscript, transcriptChanged } from "./poll.js";
 
 type Props = {
   client: HostClient;
   agent: Agent;
   timeoutMs?: number;
+  pollMs?: number;
   onSwitch: () => void;
 };
 
@@ -50,7 +50,7 @@ function termSize(columns: number, rows: number): { width: number; height: numbe
   };
 }
 
-export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
+export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwitch }: Props) {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -82,6 +82,30 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
       abortRef.current?.abort();
     };
   }, [load]);
+
+  useEffect(() => {
+    if (!shouldPollTranscript(status.kind)) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      if (!shouldPollTranscript(statusRef.current.kind)) return;
+      try {
+        const history = await client.getTranscript(agentId);
+        if (cancelled) return;
+        if (!shouldPollTranscript(statusRef.current.kind)) return;
+        setTurns((prev) => (transcriptChanged(prev, history) ? history : prev));
+      } catch {
+        // Keep the last good transcript; a single failed poll is not an error overlay.
+      }
+    };
+    const id = setInterval(() => {
+      void tick();
+    }, pollMs);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [agentId, client, pollMs, status.kind]);
 
   const send = useCallback(
     async (text: string) => {
@@ -190,15 +214,13 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
   const transcriptH = Math.max(3, height - chromeRows());
   const lineBudget = Math.max(1, transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0));
   const allRows = useMemo(
-    () => turnsToRows(turns, Math.max(8, inner - 2), displayName),
+    () => turnsToRows(turns, inner, displayName),
     [turns, inner, displayName],
   );
   const view = useMemo(() => visibleTranscript(allRows, lineBudget), [allRows, lineBudget]);
-  const blocks = useMemo(() => groupTranscriptRows(view.rows), [view.rows]);
   const composed = composeVisible(draft, inner);
   const canType = status.kind !== "sending" && status.kind !== "loading";
   const busy = status.kind === "sending";
-  const userWidth = userColumnWidth(Math.max(8, inner - 2));
 
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
@@ -232,33 +254,21 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
         ) : (
           <>
             {view.clipped ? <Text dimColor>···</Text> : null}
-            {blocks.map((block, i) => {
-              const isUser = block.align === "end";
+            {view.rows.map((row, i) => {
+              if (row.kind === "empty") {
+                return <Text key={`e-${i}`}> </Text>;
+              }
+              const isUser = row.align === "end";
+              const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : "white";
               return (
-                <Box key={`b-${i}`} flexDirection="column" width="100%">
-                  {i > 0 ? <Text> </Text> : null}
-                  <Box
-                    flexDirection="column"
-                    width="100%"
-                    alignItems={isUser ? "flex-end" : "flex-start"}
-                  >
-                    <Box flexDirection="column" width={isUser ? userWidth : undefined}>
-                      {block.rows.map((row, j) => {
-                        const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : "white";
-                        return (
-                          <Text
-                            key={`${row.kind}-${j}-${row.text.slice(0, 16)}`}
-                            bold={row.kind === "speaker"}
-                            color={color}
-                            wrap="truncate"
-                          >
-                            {row.text}
-                          </Text>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                </Box>
+                <Text
+                  key={`${row.kind}-${i}-${row.text.trimStart().slice(0, 16)}`}
+                  bold={row.kind === "speaker"}
+                  color={color}
+                  wrap="truncate"
+                >
+                  {row.text}
+                </Text>
               );
             })}
           </>

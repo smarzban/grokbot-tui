@@ -132,6 +132,7 @@ export function App({ config, token, mock }: Props) {
       client={client}
       agent={screen.agent}
       timeoutMs={config.waitTimeoutMs}
+      pollMs={config.pollIntervalMs}
       onSwitch={() => setScreen({ name: "picker" })}
     />
   );
