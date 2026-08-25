@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Agent } from "../src/client/types.js";
-import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows } from "../src/tui/roster.ts";
+import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows, answeringIndicator, busyMemberNames, busyNamesSignature } from "../src/tui/roster.ts";
 
 const ada: Agent = { id: "ada", name: "Ada", isGroup: false };
 const bea: Agent = { id: "bea", name: "Bea", isGroup: false };
@@ -49,4 +49,23 @@ test("memberListLabel joins room members and is empty for bots", () => {
     ]),
     "Dev",
   );
+});
+
+test("answeringIndicator names members who areRunning", () => {
+  const dev: Agent = { id: "dev", name: "Dev", isGroup: false, isRunning: true };
+  const chief: Agent = { id: "chief", name: "Chief of Staff", isGroup: false };
+  const roster = [dev, chief, room];
+  assert.equal(answeringIndicator(busyMemberNames(dev, roster)), "Dev is answering…");
+  assert.equal(answeringIndicator(busyMemberNames(room, roster)), "Dev is answering…");
+  assert.equal(
+    answeringIndicator(busyMemberNames(room, [{ ...dev }, { ...chief, isRunning: true }, room])),
+    "Dev, Chief of Staff answering…",
+  );
+  assert.equal(answeringIndicator(busyMemberNames(room, [{ ...dev, isRunning: false }, chief, room])), null);
+  assert.equal(
+    answeringIndicator(busyMemberNames(ada, [{ ...ada, isComposingMessage: true }])),
+    "Ada is answering…",
+  );
+  assert.equal(busyNamesSignature(["Dev"]), busyNamesSignature(["Dev"]));
+  assert.notEqual(busyNamesSignature(["Dev"]), busyNamesSignature(["Dev", "Chief of Staff"]));
 });

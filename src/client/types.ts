@@ -11,6 +11,8 @@ export type Agent = {
   title?: string;
   isGroup: boolean;
   isRunning?: boolean;
+  /** Host `isComposingMessage` — treated as busy the same way as isRunning. */
+  isComposingMessage?: boolean;
   /** Host `memberIds` / `memberAgentIds`. Empty for 1:1 bots. */
   memberIds?: string[];
   /** Names from host `remoteMembers` or resolved against the bot roster. */

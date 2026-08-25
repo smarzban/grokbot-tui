@@ -17,7 +17,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   gatewayCall,
   getTranscriptTail,
-  listAgents as cliListAgents,
   sendPrompt as cliSendPrompt,
 } from "grok-bot-cli/src/gateway.js";
 import { redact } from "../redact.js";
@@ -28,6 +27,7 @@ import {
   enrichRoster,
   lastAssistantText,
   turnsFromHostTranscript,
+  unwrapAgentList,
 } from "./transcript.js";
 import type { Agent, ChatTurn, Health, HostClient, SendPromptInput, SendResult } from "./types.js";
 import { DEFAULT_TRANSCRIPT_LIMIT, HostClientError } from "./types.js";
@@ -123,9 +123,10 @@ export class DesktopHostClient implements HostClient {
 
   async listAgents(): Promise<Agent[]> {
     try {
-      const rows = await cliListAgents(this.#session);
+      // Raw listAgents — grok-bot-cli's asRecord drops isRunning / isComposingMessage.
+      const data = await gatewayCall(this.#session, "listAgents", {});
       const agents: Agent[] = [];
-      for (const row of rows) {
+      for (const row of unwrapAgentList(data)) {
         const agent = asAgentRow(row);
         if (agent) agents.push(agent);
       }

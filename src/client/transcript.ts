@@ -43,12 +43,15 @@ export function asAgentRow(value: unknown): Agent | null {
   const isGroup =
     value.isGroup === true || (value.isGroup == null && memberIds.length > 0);
   const isRunning = typeof value.isRunning === "boolean" ? value.isRunning : undefined;
+  const isComposingMessage =
+    typeof value.isComposingMessage === "boolean" ? value.isComposingMessage : undefined;
   return {
     id,
     name,
     ...(title ? { title } : {}),
     isGroup,
     ...(isRunning !== undefined ? { isRunning } : {}),
+    ...(isComposingMessage !== undefined ? { isComposingMessage } : {}),
     ...(memberIds.length > 0 ? { memberIds } : {}),
     ...(members.length > 0 ? { members } : {}),
   };

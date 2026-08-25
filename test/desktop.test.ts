@@ -51,12 +51,13 @@ function createDesktopFetch(state: { sent?: boolean; calls: RecordedCall[] }): t
     const command = parsed.pathname.slice("/v1/sand/api/".length);
     if (command === "listAgents") {
       return json(200, [
-        { id: ADA_ID, name: "Ada", isGroup: false },
+        { id: ADA_ID, name: "Ada", isGroup: false, isRunning: true, isComposingMessage: false },
         {
           id: "55555555-5555-4555-8555-555555555555",
           name: "project X",
           isGroup: true,
           memberIds: [ADA_ID],
+          isRunning: false,
         },
       ]);
     }
@@ -106,6 +107,7 @@ test("desktop client preserves gateway URL path and sends session headers", asyn
     assert.equal(agents.length, 2);
     assert.equal(agents[0]?.name, "Ada");
     assert.equal(agents[0]?.id, ADA_ID);
+    assert.equal(agents[0]?.isRunning, true);
     const room = agents.find((agent) => agent.isGroup);
     assert.ok(room);
     assert.equal(room.name, "project X");

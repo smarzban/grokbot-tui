@@ -104,7 +104,12 @@ export class MockHostClient implements HostClient {
     return cloneTurns(turns.slice(-limit));
   }
 
-  /** Simulate a turn that arrived from the Grok Bot app, not from this TUI. */
+  /** Simulate a bot starting or finishing a run from the Grok Bot app. */
+  setRunning(agentId: string, running: boolean): void {
+    this.#guard();
+    const agent = this.#agents.find((row) => row.id === agentId || row.name === agentId);
+    if (agent) agent.isRunning = running;
+  }
   appendTurn(agentId: string, turn: ChatTurn): void {
     this.#guard();
     const agent = this.#agents.find((row) => row.id === agentId || row.name === agentId);
@@ -129,6 +134,10 @@ export class MockHostClient implements HostClient {
 
   #scheduleGroupReplies(agent: Agent, prompt: string): void {
     const members = groupMembers(agent);
+    for (const member of members) {
+      const row = this.#agents.find((item) => item.id === member.id);
+      if (row) row.isRunning = true;
+    }
     void (async () => {
       try {
         await delay(this.#replyDelayMs);
@@ -136,6 +145,8 @@ export class MockHostClient implements HostClient {
         return;
       }
       for (const member of members) {
+        const row = this.#agents.find((item) => item.id === member.id);
+        if (row) row.isRunning = false;
         this.#pushAssistant(agent, member, `${member.name} here. I received: ${prompt}`);
       }
     })();

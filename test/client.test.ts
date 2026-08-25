@@ -6,6 +6,7 @@ import { CHIEF_ID, DEV_ID, MockHostClient, PROJECT_X_ID } from "../src/client/mo
 import { openHostClient } from "../src/client/factory.js";
 import { HostClientError } from "../src/client/types.js";
 import { asAgentRow, enrichRoster, turnsFromHostTranscript } from "../src/client/transcript.js";
+import { answeringIndicator, busyMemberNames } from "../src/tui/roster.js";
 import { transcriptChanged } from "../src/tui/poll.js";
 import { readConfig } from "../src/config.js";
 import { redact } from "../src/redact.js";
@@ -58,6 +59,24 @@ test("mock host lists agents by name and id", async () => {
     rooms[0]?.members?.map((member) => member.name),
     ["Dev", "Chief of Staff"],
   );
+});
+
+test("mock room with a running member produces answering indicator text", async () => {
+  const mock = new MockHostClient();
+  mock.setRunning(DEV_ID, true);
+  const roster = await mock.listAgents();
+  const room = roster.find((agent) => agent.isGroup);
+  const dev = roster.find((agent) => agent.id === DEV_ID);
+  assert.ok(room && dev);
+  assert.equal(dev.isRunning, true);
+  assert.equal(answeringIndicator(busyMemberNames(dev, roster)), "Dev is answering…");
+  assert.equal(answeringIndicator(busyMemberNames(room, roster)), "Dev is answering…");
+  mock.setRunning(DEV_ID, false);
+  mock.setRunning(CHIEF_ID, true);
+  const later = await mock.listAgents();
+  const laterRoom = later.find((agent) => agent.isGroup);
+  assert.ok(laterRoom);
+  assert.equal(answeringIndicator(busyMemberNames(laterRoom, later)), "Chief of Staff is answering…");
 });
 
 test("mock host sendPrompt waits until a reply", async () => {
@@ -124,9 +143,13 @@ test("asAgentRow keeps group memberIds and enrichRoster fills names from the bot
     name: "project X",
     isGroup: true,
     memberIds: [DEV_ID, CHIEF_ID],
+    isRunning: false,
+    isComposingMessage: false,
   });
   assert.ok(row);
   assert.equal(row.isGroup, true);
+  assert.equal(row.isRunning, false);
+  assert.equal(row.isComposingMessage, false);
   assert.deepEqual(row.memberIds, [DEV_ID, CHIEF_ID]);
   const roster = enrichRoster([
     { id: DEV_ID, name: "Dev", isGroup: false },

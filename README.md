@@ -14,7 +14,7 @@ Command names and response shapes come from those libraries / the live host. The
 - Lists your bots and rooms by name (a short id prefix only if two names collide)
 - Opens a framed chat: agent or room name (rooms also show members), idle/waiting in the header, clipped transcript, compose bar at the bottom
 - Sends a message. 1:1 chats **poll until the bot is idle** and show the last reply; rooms send on the group id and let idle poll pick up each member’s turn
-- While idle, refreshes the transcript so messages sent from the Grok Bot app show up without sending from the TUI
+- While idle, refreshes the transcript and roster so Grok Bot app messages and `isRunning` answering indicators show up without sending from the TUI
 - PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
 - Images from the host (`user-attachment` / SendMessage `attachment`) show as `[image] filename` on the correct side
 - Switch bots or rooms without quitting

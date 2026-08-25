@@ -20,7 +20,7 @@ import {
   scrollDeltaForButton,
   WHEEL_LINE_DELTA,
 } from "./mouse.js";
-import { memberListLabel } from "./roster.js";
+import { answeringIndicator, busyMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
 import { DEFAULT_POLL_MS, shouldPollTranscript, transcriptChanged } from "./poll.js";
 
 type Props = {
@@ -39,7 +39,7 @@ type Status =
   | { kind: "awaiting-user" }
   | { kind: "error"; message: string };
 
-function headerStatus(status: Status, isGroup = false): string {
+function headerStatus(status: Status, isGroup = false, answering = false): string {
   switch (status.kind) {
     case "loading":
       return "loading";
@@ -50,7 +50,7 @@ function headerStatus(status: Status, isGroup = false): string {
     case "error":
       return "error";
     default:
-      return "idle";
+      return answering ? "answering" : "idle";
   }
 }
 
@@ -76,29 +76,40 @@ export function Chat({
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [liveRoster, setLiveRoster] = useState(roster);
+  const [answeringLine, setAnsweringLine] = useState<string | null>(() =>
+    answeringIndicator(busyMemberNames(agent, roster)),
+  );
   const abortRef = useRef<AbortController | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const statusRef = useRef(status);
   statusRef.current = status;
+  const agentRef = useRef(agent);
+  agentRef.current = agent;
+  const busySigRef = useRef(busyNamesSignature(busyMemberNames(agent, roster)));
   const agentId = agent.id;
-  const displayName = agent.name.trim() || "agent";
-  const isGroup = agent.isGroup === true;
+  const liveAgent = liveRoster.find((row) => row.id === agentId) ?? agent;
+  const displayName = liveAgent.name.trim() || "agent";
+  const isGroup = liveAgent.isGroup === true;
   const labelCtx = useMemo(
     () => ({
       agentName: displayName,
       isGroup,
-      members: agent.members,
-      roster,
+      members: liveAgent.members,
+      roster: liveRoster,
     }),
-    [agent.members, displayName, isGroup, roster],
+    [displayName, isGroup, liveAgent.members, liveRoster],
   );
-  const headerMembers = memberListLabel(agent, roster);
+  const headerMembers = memberListLabel(liveAgent, liveRoster);
 
   const { width, height } = termSize(columns, rows);
   const inner = innerWidth(width);
   const transcriptH = Math.max(3, height - chromeRows());
-  const lineBudget = Math.max(1, transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0));
+  const lineBudget = Math.max(
+    1,
+    transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0) - (answeringLine ? 1 : 0),
+  );
   const allRows = useMemo(
     () => turnsToRows(turns, inner, labelCtx),
     [turns, inner, labelCtx],
@@ -146,20 +157,46 @@ export function Chat({
   }, [rowCount, lineBudget]);
 
   useEffect(() => {
-    if (!shouldPollTranscript(status.kind)) return;
+    setLiveRoster(roster);
+    const names = busyMemberNames(agent, roster);
+    busySigRef.current = busyNamesSignature(names);
+    setAnsweringLine(answeringIndicator(names));
+  }, [agent, roster]);
+
+  useEffect(() => {
+    if (status.kind === "loading") return;
     let cancelled = false;
+    const applyRoster = (nextRoster: Agent[]) => {
+      const names = busyMemberNames(agentRef.current, nextRoster);
+      const sig = busyNamesSignature(names);
+      if (sig === busySigRef.current) return;
+      busySigRef.current = sig;
+      setAnsweringLine(answeringIndicator(names));
+      setLiveRoster(nextRoster);
+    };
     const tick = async () => {
       if (cancelled) return;
-      if (!shouldPollTranscript(statusRef.current.kind)) return;
+      if (shouldPollTranscript(statusRef.current.kind)) {
+        try {
+          const history = await client.getTranscript(agentId);
+          if (cancelled) return;
+          if (shouldPollTranscript(statusRef.current.kind)) {
+            setTurns((prev) => (transcriptChanged(prev, history) ? history : prev));
+          }
+        } catch {
+          // Keep the last good transcript; a single failed poll is not an error overlay.
+        }
+      }
+      if (cancelled) return;
       try {
-        const history = await client.getTranscript(agentId);
+        const nextRoster = await client.listAgents();
         if (cancelled) return;
-        if (!shouldPollTranscript(statusRef.current.kind)) return;
-        setTurns((prev) => (transcriptChanged(prev, history) ? history : prev));
+        applyRoster(nextRoster);
       } catch {
-        // Keep the last good transcript; a single failed poll is not an error overlay.
+        // Keep the last answering line; a failed roster poll is not an error overlay.
       }
     };
+    void tick();
     const id = setInterval(() => {
       void tick();
     }, pollMs);
@@ -340,7 +377,7 @@ export function Chat({
             </Text>
           ) : null}
         </Text>
-        <Text dimColor>{headerStatus(status, isGroup)}</Text>
+        <Text dimColor>{headerStatus(status, isGroup, answeringLine != null)}</Text>
       </Box>
 
       <Box
@@ -380,6 +417,11 @@ export function Chat({
             {view.moreBelow ? <Text dimColor>···</Text> : null}
           </>
         )}
+        {answeringLine ? (
+          <Text color="yellow" dimColor wrap="truncate">
+            {answeringLine}
+          </Text>
+        ) : null}
       </Box>
 
       <Box
