@@ -134,12 +134,25 @@ test("Shift+Enter, LF without return, and Ctrl+J insert a newline; Enter / CR se
   assert.equal(enterLf.type, "send");
 });
 
-test("Cmd+Delete and Cmd+Backspace clear the compose box", () => {
+test("Cmd+Delete and Cmd+Backspace clear the compose box; Option does not", () => {
   const draft = { text: "hello", caret: 3 };
-  const back = handleComposeKey({ meta: true, backspace: true }, draft, 40);
+  const back = handleComposeKey({ super: true, backspace: true }, draft, 40);
   assert.deepEqual(back, { type: "set", draft: { text: "", caret: 0 } });
-  const del = handleComposeKey({ meta: true, delete: true }, draft, 40);
+  const del = handleComposeKey({ super: true, delete: true }, draft, 40);
   assert.deepEqual(del, { type: "set", draft: { text: "", caret: 0 } });
+  const optDel = handleComposeKey({ meta: true, delete: true }, draft, 40);
+  assert.notEqual(optDel.type === "set" && optDel.draft.text === "", true);
+  assert.equal(optDel.type, "set");
+  if (optDel.type === "set") {
+    assert.equal(optDel.draft.text, "helo");
+    assert.equal(optDel.draft.caret, 3);
+  }
+  const optBack = handleComposeKey({ meta: true, backspace: true }, draft, 40);
+  assert.equal(optBack.type, "set");
+  if (optBack.type === "set") {
+    assert.equal(optBack.draft.text, "helo");
+    assert.equal(optBack.draft.caret, 2);
+  }
 });
 
 test("Cmd+Left and Cmd+Right jump to the current visual line ends", () => {
@@ -148,13 +161,13 @@ test("Cmd+Left and Cmd+Right jump to the current visual line ends", () => {
   const laid = layoutCompose(text, caret, 8);
   assert.deepEqual(laid.lines, ["hello", "world"]);
   assert.equal(laid.line, 1);
-  const left = handleComposeKey({ meta: true, leftArrow: true }, { text, caret }, 8);
+  const left = handleComposeKey({ super: true, leftArrow: true }, { text, caret }, 8);
   assert.equal(left.type, "set");
   if (left.type === "set") {
     assert.equal(left.draft.caret, lineStartCaret(laid));
     assert.equal(left.draft.caret, 6);
   }
-  const right = handleComposeKey({ meta: true, rightArrow: true }, { text, caret }, 8);
+  const right = handleComposeKey({ super: true, rightArrow: true }, { text, caret }, 8);
   assert.equal(right.type, "set");
   if (right.type === "set") {
     assert.equal(right.draft.caret, lineEndCaret(laid, text.length));

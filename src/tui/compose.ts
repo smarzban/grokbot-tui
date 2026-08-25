@@ -188,7 +188,9 @@ export function splitLineAtCaret(
   return { before: line.slice(0, i), cell: line.slice(i, i + 1), after: line.slice(i + 1) };
 }
 
-/** Subset of Ink `Key` used by compose editing. Ghostty on Mac: `meta` is Command. */
+/** Subset of Ink `Key` used by compose editing.
+ * Kitty keyboard protocol (Ghostty on Mac): `super` is Command, `meta` is Option/Alt.
+ */
 export type ComposeKey = {
   return?: boolean;
   shift?: boolean;
@@ -212,7 +214,7 @@ export type ComposeCommand =
   | { type: "unhandled" };
 
 function isCommand(key: ComposeKey): boolean {
-  return key.meta === true || key.super === true;
+  return key.super === true;
 }
 
 /**

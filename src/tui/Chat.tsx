@@ -15,15 +15,20 @@ import {
 import {
   adjustScrollOffset,
   applyScrollDelta,
+  BUBBLE_CHROME_X,
+  BUBBLE_PAD_X,
+  bubbleOuterWidth,
   chromeRows,
   innerWidth,
+  isBubbleEdge,
   isFullPictureRun,
   transcriptInnerHeight,
   turnsToRows,
   visibleTranscript,
+  wrapWidth,
   type TranscriptRow,
 } from "./layout.js";
-import { IMAGE_CELL_ROWS, imagePlaceholder } from "./images.js";
+import { IMAGE_CELL_COLS, IMAGE_CELL_ROWS, imagePlaceholder } from "./images.js";
 import { Picture } from "./Picture.js";
 import {
   consumeMouseInput,
@@ -104,41 +109,123 @@ function clippedPictureLabel(row: TranscriptRow, firstVisible: boolean): string 
   return imagePlaceholder(row.image ?? {});
 }
 
-function renderTranscriptRows(rows: TranscriptRow[], inner: number): ReactNode[] {
+function bubbleContentWidth(rows: TranscriptRow[], pane: number): number {
+  let longest = 1;
+  let hasPicture = false;
+  for (const row of rows) {
+    if (isBubbleEdge(row.kind) || row.kind === "empty" || row.kind === "speaker") continue;
+    if (row.kind === "picture") {
+      hasPicture = true;
+      if (row.pictureSlot === 0 && row.text.trim()) {
+        longest = Math.max(longest, row.text.trim().length);
+      }
+    } else {
+      longest = Math.max(longest, row.text.length);
+    }
+  }
+  if (hasPicture) longest = Math.max(longest, Math.min(IMAGE_CELL_COLS, wrapWidth(pane)));
+  return longest;
+}
+
+function renderBubbleBody(content: TranscriptRow[], inner: number, isUser: boolean): ReactNode[] {
   const out: React.ReactNode[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row) continue;
-    if (row.kind === "picture" && isFullPictureRun(rows, i)) {
-      out.push(<Picture key={row.pictureId ?? `pic-${i}`} row={row} inner={inner} />);
+  const color = isUser ? "black" : "white";
+  const imageColor = isUser ? "black" : "yellow";
+  for (let i = 0; i < content.length; i++) {
+    const row = content[i];
+    if (!row || isBubbleEdge(row.kind)) continue;
+    if (row.kind === "picture" && isFullPictureRun(content, i)) {
+      out.push(<Picture key={row.pictureId ?? `pic-${i}`} row={row} inner={inner} hug={false} />);
       i += IMAGE_CELL_ROWS - 1;
       continue;
     }
     if (row.kind === "picture") {
-      const firstVisible = i === 0 || rows[i - 1]?.pictureId !== row.pictureId;
+      const firstVisible = i === 0 || content[i - 1]?.pictureId !== row.pictureId;
       out.push(
-        <Text key={`p-${row.pictureId ?? i}-${i}`} dimColor color="yellow" wrap="truncate">
+        <Text key={`p-${row.pictureId ?? i}-${i}`} dimColor color={imageColor} wrap="truncate">
           {clippedPictureLabel(row, firstVisible)}
         </Text>,
       );
       continue;
     }
-    if (row.kind === "empty") {
-      out.push(<Text key={`e-${i}`}> </Text>);
-      continue;
-    }
-    const isUser = row.align === "end";
-    const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : row.kind === "image" ? "yellow" : "white";
+    const isImage = row.kind === "image";
     out.push(
       <Text
         key={`${row.kind}-${i}-${row.text.trimStart().slice(0, 16)}`}
-        bold={row.kind === "speaker"}
-        dimColor={row.kind === "image"}
-        color={color}
+        dimColor={isImage}
+        color={isImage ? imageColor : color}
         wrap="truncate"
       >
-        {row.text}
+        {row.text.length === 0 ? " " : row.text}
       </Text>,
+    );
+  }
+  return out;
+}
+
+function renderTranscriptRows(rows: TranscriptRow[], pane: number): ReactNode[] {
+  const out: React.ReactNode[] = [];
+  let i = 0;
+  let seq = 0;
+  while (i < rows.length) {
+    const row = rows[i];
+    if (!row) {
+      i += 1;
+      continue;
+    }
+    if (row.kind === "empty") {
+      while (i < rows.length && rows[i]?.kind === "empty") {
+        out.push(<Text key={`e-${seq++}`}> </Text>);
+        i += 1;
+      }
+      continue;
+    }
+    if (row.kind === "speaker") {
+      out.push(
+        <Text key={`s-${seq++}`} bold color="green" wrap="truncate">
+          {row.text}
+        </Text>,
+      );
+      i += 1;
+      continue;
+    }
+    const content: TranscriptRow[] = [];
+    if (row.kind === "bubbleOpen") i += 1;
+    while (i < rows.length) {
+      const cur = rows[i];
+      if (!cur || cur.kind === "empty" || cur.kind === "speaker" || cur.kind === "bubbleOpen") break;
+      if (cur.kind === "bubbleClose") {
+        i += 1;
+        break;
+      }
+      content.push(cur);
+      i += 1;
+    }
+    if (content.length === 0) continue;
+    const isUser = content[0]?.align === "end";
+    const inner = bubbleContentWidth(content, pane);
+    const outer = bubbleOuterWidth(inner, pane);
+    const bubbleInner = Math.max(1, outer - BUBBLE_CHROME_X);
+    out.push(
+      <Box
+        key={`b-${seq++}`}
+        width={pane}
+        flexDirection="row"
+        justifyContent={isUser ? "flex-end" : "flex-start"}
+        flexShrink={0}
+      >
+        <Box
+          flexDirection="column"
+          width={outer}
+          borderStyle="round"
+          borderColor={isUser ? "cyan" : "gray"}
+          backgroundColor={isUser ? "cyan" : "gray"}
+          paddingX={BUBBLE_PAD_X}
+          flexShrink={0}
+        >
+          {renderBubbleBody(content, bubbleInner, isUser)}
+        </Box>
+      </Box>,
     );
   }
   return out;
