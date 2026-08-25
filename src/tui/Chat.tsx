@@ -4,10 +4,19 @@ import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
 import {
+  composeInnerHeight,
+  deleteBackward,
+  deleteForward,
+  insertAt,
+  layoutCompose,
+  moveCaret,
+  splitLineAtCaret,
+  visibleComposeWindow,
+} from "./compose.js";
+import {
   adjustScrollOffset,
   applyScrollDelta,
   chromeRows,
-  composeVisible,
   innerWidth,
   transcriptInnerHeight,
   turnsToRows,
@@ -49,6 +58,20 @@ type Status =
   | { kind: "awaiting-user" }
   | { kind: "error"; message: string };
 
+type Draft = { text: string; caret: number };
+
+const EMPTY_DRAFT: Draft = { text: "", caret: 0 };
+
+/** Ink 7 has no TextInput that can share alt-screen + a mention overlay; own the caret. */
+
+function printableChunk(input: string): string {
+  let out = "";
+  for (const ch of input) {
+    if (ch === "\n" || ch >= " ") out += ch;
+  }
+  return out;
+}
+
 function headerStatus(status: Status, isGroup = false, answering = false): string {
   switch (status.kind) {
     case "loading":
@@ -83,7 +106,7 @@ export function Chat({
   const { stdout } = useStdout();
   const { columns, rows } = useWindowSize();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [scrollOffset, setScrollOffset] = useState(0);
   const [liveRoster, setLiveRoster] = useState(roster);
@@ -118,7 +141,7 @@ export function Chat({
     () => (isGroup ? mentionNames(liveAgent, liveRoster) : []),
     [isGroup, liveAgent, liveRoster],
   );
-  const mentionQ = isGroup ? mentionQuery(draft) : null;
+  const mentionQ = isGroup ? mentionQuery(draft.text, draft.caret) : null;
   const mentionMatches = mentionQ ? filterMentions(mentionOptions, mentionQ.prefix) : [];
   const mentionQueryKey = mentionQ ? `${mentionQ.start}:${mentionQ.prefix}` : "";
   const menuOpen = mentionMenuOpen(mentionMatches.length, mentionDismissed);
@@ -126,10 +149,13 @@ export function Chat({
 
   const { width, height } = termSize(columns, rows);
   const inner = innerWidth(width);
-  const transcriptH = Math.max(3, height - chromeRows());
+  const composeLaid = layoutCompose(draft.text, draft.caret, inner);
+  const composeInner = composeInnerHeight(composeLaid.lines.length);
+  const composeView = visibleComposeWindow(composeLaid.lines, composeLaid.line, composeInner);
+  const transcriptH = Math.max(3, height - chromeRows(composeInner));
   const lineBudget = Math.max(
     1,
-    transcriptInnerHeight(height) -
+    transcriptInnerHeight(height, composeInner) -
       (status.kind === "error" ? 1 : 0) -
       (answeringLine ? 1 : 0) -
       (menuOpen ? Math.min(mentionMatches.length, MAX_VISIBLE_MENTIONS) : 0),
@@ -248,7 +274,7 @@ export function Chat({
         timestampMs: Date.now(),
       };
       setTurns((current) => [...current, optimistic]);
-      setDraft("");
+      setDraft(EMPTY_DRAFT);
       setScrollOffset(0);
       setStatus({ kind: "sending" });
 
@@ -333,7 +359,7 @@ export function Chat({
       if (key.tab || key.return) {
         const pick =
           mentionMatches.length === 1 ? mentionMatches[0] : mentionMatches[mentionIndex] ?? mentionMatches[0];
-        if (pick) setDraft((value) => completeMention(value, pick));
+        if (pick) setDraft((value) => completeMention(value.text, pick, value.caret));
         return;
       }
     }
@@ -383,28 +409,49 @@ export function Chat({
       setScrollOffset(0);
       return;
     }
+    if (key.leftArrow) {
+      setDraft((value) => ({ text: value.text, caret: moveCaret(value.caret, value.text.length, -1) }));
+      return;
+    }
+    if (key.rightArrow) {
+      setDraft((value) => ({ text: value.text, caret: moveCaret(value.caret, value.text.length, 1) }));
+      return;
+    }
+    if (key.ctrl && input === "a") {
+      setDraft((value) => ({ text: value.text, caret: 0 }));
+      return;
+    }
+    if (key.ctrl && input === "e") {
+      setDraft((value) => ({ text: value.text, caret: value.text.length }));
+      return;
+    }
     if (current.kind === "sending" || current.kind === "loading") {
       return;
     }
     if (key.return) {
-      void send(draftRef.current);
+      void send(draftRef.current.text);
       return;
     }
-    if (key.backspace || key.delete) {
-      setDraft((value) => value.slice(0, -1));
+    if (key.backspace) {
+      setDraft((value) => deleteBackward(value.text, value.caret));
+      return;
+    }
+    if (key.delete) {
+      setDraft((value) => deleteForward(value.text, value.caret));
       return;
     }
     if (key.ctrl || key.meta) return;
-    if (input) setDraft((value) => value + input);
+    const chunk = printableChunk(input);
+    if (chunk) setDraft((value) => insertAt(value.text, value.caret, chunk));
   });
 
   const view = useMemo(
     () => visibleTranscript(allRows, lineBudget, scrollOffset),
     [allRows, lineBudget, scrollOffset],
   );
-  const composed = composeVisible(draft, inner);
   const canType = status.kind !== "sending" && status.kind !== "loading";
   const busy = status.kind === "sending";
+  const composePlaceholder = draft.text.length === 0 ? (busy ? "waiting…" : "message") : null;
 
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
@@ -486,23 +533,32 @@ export function Chat({
       </Box>
 
       <Box
+        flexDirection="column"
         borderStyle="single"
         borderColor={busy ? "yellow" : "cyan"}
         paddingX={1}
-        height={3}
+        height={composeInner + 2}
         overflow="hidden"
       >
-        {draft.length === 0 ? (
-          <Text>
-            {canType ? <Text inverse> </Text> : <Text dimColor> </Text>}
-            <Text dimColor>{busy ? "waiting…" : "message"}</Text>
-          </Text>
-        ) : (
-          <Text>
-            {composed.prefix}
-            {canType ? <Text inverse> </Text> : null}
-          </Text>
-        )}
+        {composeView.lines.map((line, i) => {
+          const onCaret = i === composeView.line;
+          if (!onCaret) {
+            return (
+              <Text key={`c-${i}`} wrap="truncate">
+                {line.length === 0 ? " " : line}
+              </Text>
+            );
+          }
+          const cell = splitLineAtCaret(line, composeLaid.col);
+          return (
+            <Text key={`c-${i}`} wrap="truncate">
+              {cell.before}
+              {canType ? <Text inverse>{cell.cell}</Text> : <Text dimColor>{cell.cell}</Text>}
+              {cell.after}
+              {composePlaceholder ? <Text dimColor>{composePlaceholder}</Text> : null}
+            </Text>
+          );
+        })}
       </Box>
 
       <Box height={1} overflow="hidden" paddingX={1}>
@@ -511,7 +567,7 @@ export function Chat({
             ? "wheel/PgUp/Dn scroll  ·  Esc cancel  ·  Ctrl+c quit"
             : menuOpen
               ? "Tab/Enter insert  ·  ↑↓  ·  Esc close"
-              : "wheel/PgUp/Dn scroll  ·  Enter send  ·  Esc list  ·  Ctrl+c quit"}
+              : "←→ caret  ·  Ctrl+a/e  ·  Enter send  ·  Esc list  ·  Ctrl+c quit"}
         </Text>
       </Box>
     </Box>

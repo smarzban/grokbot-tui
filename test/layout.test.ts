@@ -89,6 +89,7 @@ test("composeVisible shows a tail when the draft is wider than the bar", () => {
 test("transcript inner height leaves room for chrome", () => {
   assert.equal(transcriptInnerHeight(24) > 10, true);
   assert.ok(transcriptInnerHeight(24) < 24);
+  assert.ok(transcriptInnerHeight(24, 5) < transcriptInnerHeight(24, 1));
 });
 
 test("assistant send-message turns are labeled with the agent name", () => {

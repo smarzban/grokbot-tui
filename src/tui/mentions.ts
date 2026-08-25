@@ -1,12 +1,14 @@
 import type { Agent } from "../client/types.js";
 
-/** Last `@token` at the caret (end of draft). Requires a word boundary before `@`. */
-export function mentionQuery(draft: string): { start: number; prefix: string } | null {
-  if (!draft) return null;
-  const at = draft.lastIndexOf("@");
+/** `@token` immediately before `caret`. Requires a word boundary before `@`. */
+export function mentionQuery(draft: string, caret = draft.length): { start: number; prefix: string } | null {
+  const pos = Math.min(Math.max(0, caret), draft.length);
+  const before = draft.slice(0, pos);
+  if (!before) return null;
+  const at = before.lastIndexOf("@");
   if (at < 0) return null;
-  if (at > 0 && !/\s/.test(draft.charAt(at - 1))) return null;
-  const prefix = draft.slice(at + 1);
+  if (at > 0 && !/\s/.test(before.charAt(at - 1))) return null;
+  const prefix = before.slice(at + 1);
   if (prefix.length > 0 && /\s/.test(prefix)) return null;
   return { start: at, prefix };
 }
@@ -35,10 +37,15 @@ export function filterMentions(names: string[], prefix: string): string[] {
   return names.filter((name) => name.toLowerCase().startsWith(needle));
 }
 
-export function completeMention(draft: string, name: string): string {
-  const query = mentionQuery(draft);
-  if (!query) return draft;
-  return `${draft.slice(0, query.start)}@${name} `;
+export function completeMention(
+  draft: string,
+  name: string,
+  caret = draft.length,
+): { text: string; caret: number } {
+  const query = mentionQuery(draft, caret);
+  if (!query) return { text: draft, caret };
+  const text = `${draft.slice(0, query.start)}@${name} ${draft.slice(caret)}`;
+  return { text, caret: query.start + name.length + 2 };
 }
 
 export function mentionMenuOpen(matchCount: number, dismissed: boolean): boolean {

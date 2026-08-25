@@ -60,7 +60,8 @@ Other flags: `--agent NAME` (skip the picker if that bot or room exists), `--hel
 | ↑ ↓ / j k, Enter | picker | Move / open |
 | PgUp / PgDn / wheel / ↑ ↓ / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll) |
 | Home / End | chat | Jump to oldest / latest |
-| Tab / Enter / ↑ ↓ / Esc | chat mention menu | Complete, move, or close (does not send or leave the room) |
+| ← → / Ctrl+a / Ctrl+e | chat compose | Move the caret; Backspace/Delete edit at the caret; long drafts wrap |
+| Tab / Enter / ↑ ↓ / Esc | chat mention menu | Complete, move, or close (does not send or leave the room). ← → move the caret and close the menu if they leave the `@token` |
 | Esc | chat | Cancel wait, or back to the picker |
 | Ctrl+b | chat | Switch bot / room |
 | r | picker / error | Retry / refresh |

@@ -36,9 +36,12 @@ test("prefix D matches Dev", () => {
 test("Tab with one match expands draft", () => {
   const names = filterMentions(mentionNames(room), "D");
   assert.equal(names.length, 1);
-  assert.equal(completeMention("@D", names[0]!), "@Dev ");
-  assert.equal(completeMention("hi @D", "Dev"), "hi @Dev ");
-  assert.equal(completeMention("@", "Dev"), "@Dev ");
+  assert.equal(completeMention("@D", names[0]!).text, "@Dev ");
+  assert.equal(completeMention("@D", names[0]!).caret, 5);
+  assert.equal(completeMention("hi @D", "Dev").text, "hi @Dev ");
+  assert.equal(completeMention("@", "Dev").text, "@Dev ");
+  assert.equal(completeMention("x @D y", "Dev", 4).text, "x @Dev  y");
+  assert.equal(completeMention("x @D y", "Dev", 4).caret, 7);
 });
 
 test("Esc dismisses", () => {
@@ -55,4 +58,12 @@ test("mention query is the @token at the end; 1:1 has no names", () => {
   assert.deepEqual(mentionNames(ada), []);
   assert.equal(wrapMentionIndex(0, 2, -1), 1);
   assert.equal(wrapMentionIndex(1, 2, 1), 0);
+});
+
+test("mention query uses text before the caret, not the whole draft", () => {
+  const draft = "hi @Dev extra";
+  assert.equal(mentionQuery(draft, 3), null);
+  assert.deepEqual(mentionQuery(draft, 4), { start: 3, prefix: "" });
+  assert.deepEqual(mentionQuery(draft, 7), { start: 3, prefix: "Dev" });
+  assert.equal(mentionQuery(draft, 8), null);
 });

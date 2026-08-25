@@ -1,4 +1,5 @@
 import type { AgentMember, ChatImage, ChatTurn } from "../client/types.js";
+import { MIN_COMPOSE_INNER } from "./compose.js";
 
 export type TranscriptAlign = "start" | "end";
 
@@ -317,13 +318,14 @@ export function composeVisible(draft: string, width: number): { prefix: string; 
   return { prefix: draft.slice(draft.length - max), caret: true };
 }
 
-export function chromeRows(): number {
-  // header box (3) + compose box (3) + footer (1)
-  return 7;
+export function chromeRows(composeInner = MIN_COMPOSE_INNER): number {
+  const inner = Math.max(MIN_COMPOSE_INNER, composeInner);
+  // header box (3) + compose box (border 2 + inner lines) + footer (1)
+  return 3 + (2 + inner) + 1;
 }
 
-export function transcriptInnerHeight(terminalRows: number): number {
-  const outer = Math.max(4, terminalRows - chromeRows());
+export function transcriptInnerHeight(terminalRows: number, composeInner = MIN_COMPOSE_INNER): number {
+  const outer = Math.max(4, terminalRows - chromeRows(composeInner));
   return Math.max(1, outer - 2);
 }
 
