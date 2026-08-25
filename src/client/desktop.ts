@@ -29,7 +29,7 @@ import {
   turnsFromHostTranscript,
 } from "./transcript.js";
 import type { Agent, ChatTurn, Health, HostClient, SendPromptInput, SendResult } from "./types.js";
-import { HostClientError } from "./types.js";
+import { DEFAULT_TRANSCRIPT_LIMIT, HostClientError } from "./types.js";
 
 export type DesktopSession = {
   gatewayUrl: string;
@@ -134,7 +134,7 @@ export class DesktopHostClient implements HostClient {
     }
   }
 
-  async getTranscript(agentId: string, limit = 80): Promise<ChatTurn[]> {
+  async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
     try {
       const out = await getTranscriptTail(this.#session, agentId, limit);
       return turnsFromHostTranscript(out.transcript);

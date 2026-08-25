@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { HOST_DOWN_MESSAGE, MISSING_AUTH_MESSAGE } from "./errors.js";
-import { HostClientError } from "./types.js";
+import { DEFAULT_TRANSCRIPT_LIMIT, HostClientError } from "./types.js";
 import type { Agent, ChatTurn, Health, HostClient, SendPromptInput, SendResult } from "./types.js";
 
 export type MockHostOptions = {
@@ -67,7 +67,7 @@ export class MockHostClient implements HostClient {
     return this.#agents.filter((agent) => !agent.isGroup).map((agent) => ({ ...agent }));
   }
 
-  async getTranscript(agentId: string, limit = 80): Promise<ChatTurn[]> {
+  async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
     this.#guard();
     const turns = this.#transcripts.get(agentId) ?? [];
     return cloneTurns(turns.slice(-limit));

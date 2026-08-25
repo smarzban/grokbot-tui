@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChatTurn } from "../src/client/types.js";
 import {
+  adjustScrollOffset,
   agentLabel,
   composeVisible,
   takeLastRows,
@@ -149,4 +150,82 @@ test("empty thinking turns are skipped but send-message bodies are kept", () => 
     false,
   );
   assert.ok(rows.some((row) => row.kind === "body" && row.text === "visible reply"));
+});
+
+test("user text that fits the pane is a single right-padded line", () => {
+  const rows = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "hello there" }], 40, "Dev");
+  const bodies = rows.filter((row) => row.kind === "body");
+  assert.equal(bodies.length, 1);
+  assert.equal(bodies[0]?.text.length, 40);
+  assert.ok(bodies[0]?.text.endsWith("hello there"));
+  assert.ok(bodies[0]?.text.startsWith(" "));
+});
+
+test("only user strings longer than the inner width wrap", () => {
+  const fits = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(40) }], 40, "Dev");
+  assert.equal(fits.filter((row) => row.kind === "body").length, 1);
+  const wraps = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "x".repeat(41) }], 40, "Dev");
+  assert.ok(wraps.filter((row) => row.kind === "body").length > 1);
+});
+
+test("visibleTranscript offset 0 sticks to the bottom", () => {
+  const turns: ChatTurn[] = [];
+  for (let i = 0; i < 12; i += 1) {
+    turns.push({ id: String(i), role: "assistant", speaker: "Dev", text: `line-${i}` });
+  }
+  const rows = turnsToRows(turns, 40, "Dev");
+  const bottom = visibleTranscript(rows, 6, 0);
+  assert.equal(bottom.pinned, true);
+  assert.equal(bottom.moreBelow, false);
+  assert.ok(bottom.rows.some((row) => row.text.includes("line-11")));
+  assert.equal(
+    bottom.rows.some((row) => row.kind === "body" && row.text.includes("line-0")),
+    false,
+  );
+});
+
+test("scrolled-up offset hides the latest rows", () => {
+  const turns: ChatTurn[] = [];
+  for (let i = 0; i < 12; i += 1) {
+    turns.push({ id: String(i), role: "assistant", speaker: "Dev", text: `line-${i}` });
+  }
+  const rows = turnsToRows(turns, 40, "Dev");
+  const up = visibleTranscript(rows, 6, 8);
+  assert.equal(up.pinned, false);
+  assert.equal(up.moreBelow, true);
+  assert.equal(
+    up.rows.some((row) => row.kind === "body" && row.text.includes("line-11")),
+    false,
+  );
+});
+
+test("adjustScrollOffset stays pinned at 0 when new rows arrive", () => {
+  assert.equal(
+    adjustScrollOffset({ offset: 0, prevRowCount: 10, nextRowCount: 16, budget: 6 }),
+    0,
+  );
+});
+
+test("adjustScrollOffset grows with new rows so poll does not reset a scrolled view", () => {
+  const next = adjustScrollOffset({ offset: 5, prevRowCount: 20, nextRowCount: 24, budget: 6 });
+  assert.equal(next, 9);
+  assert.notEqual(next, 0);
+});
+
+test("image turns render a placeholder; text-only turns do not", () => {
+  const withImage = turnsToRows(
+    [{ id: "1", role: "user", speaker: "you", text: "", images: [{ alt: "shot.png" }] }],
+    40,
+    "Dev",
+  );
+  const imageRow = withImage.find((row) => row.kind === "image");
+  assert.ok(imageRow);
+  assert.equal(imageRow.align, "end");
+  assert.match(imageRow.text, /\[image\]/);
+  assert.match(imageRow.text, /shot\.png/);
+  const textOnly = turnsToRows([{ id: "1", role: "user", speaker: "you", text: "hi" }], 40, "Dev");
+  assert.equal(
+    textOnly.some((row) => row.kind === "image"),
+    false,
+  );
 });

@@ -188,6 +188,26 @@ test("transcript parser reads host message and send-message rows", () => {
   assert.equal(turns[1]?.text, "hello from Ada");
 });
 
+test("transcript parser keeps user-attachment and send-message attachment", () => {
+  const turns = turnsFromHostTranscript({
+    entries: [
+      { kind: "user-attachment", fileName: "cat.png", mime: "image/png", timestampMs: 1 },
+      {
+        kind: "send-message",
+        message: { type: "attachment", fileName: "out.png" },
+        timestampMs: 2,
+      },
+      { kind: "send-message", message: { type: "text", content: "hello from Ada" }, timestampMs: 3 },
+    ],
+  });
+  const cats = turns.filter((turn) => turn.images?.some((image) => image.alt === "cat.png"));
+  const outs = turns.filter((turn) => turn.images?.some((image) => image.alt === "out.png"));
+  assert.equal(cats.length, 1);
+  assert.equal(cats[0]?.role, "user");
+  assert.equal(outs.length, 1);
+  assert.ok(turns.some((turn) => turn.text === "hello from Ada" && (turn.images?.length ?? 0) === 0));
+});
+
 test("redact never leaves a token in output", () => {
   const secret = "super-secret-token-value";
   const out = redact(`Authorization: Bearer ${secret} SAND_GATEWAY_TOKEN=${secret}`, secret);

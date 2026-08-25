@@ -1,7 +1,16 @@
 import { GrokBot } from "@adam91holt/grokbot-sdk";
 import { mapHostError } from "./errors.js";
 import { asAgentRow, turnsFromHostTranscript, unwrapAgentList } from "./transcript.js";
-import type { Agent, ChatTurn, Health, HostClient, HostSource, SendPromptInput, SendResult } from "./types.js";
+import {
+  DEFAULT_TRANSCRIPT_LIMIT,
+  type Agent,
+  type ChatTurn,
+  type Health,
+  type HostClient,
+  type HostSource,
+  type SendPromptInput,
+  type SendResult,
+} from "./types.js";
 
 export class GatewayHostClient implements HostClient {
   readonly source: HostSource;
@@ -41,7 +50,7 @@ export class GatewayHostClient implements HostClient {
     }
   }
 
-  async getTranscript(agentId: string, limit = 80): Promise<ChatTurn[]> {
+  async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
     try {
       const payload = await this.bot.getAgentTranscriptTail({ id: agentId, limit });
       return turnsFromHostTranscript(payload);

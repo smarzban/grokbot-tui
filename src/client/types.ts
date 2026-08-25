@@ -8,12 +8,25 @@ export type Agent = {
   isRunning?: boolean;
 };
 
+export const DEFAULT_TRANSCRIPT_LIMIT = 500;
+
+export type ChatImage = {
+  /** Filename or alt shown in the TUI. Never a token-bearing URL. */
+  alt?: string;
+  /** Local filesystem path when the host gave one in attachmentPaths. */
+  path?: string;
+  /** https URL from attachmentPaths. Do not print; may need session headers to fetch. */
+  url?: string;
+  mime?: string;
+};
+
 export type ChatTurn = {
   id: string;
   role: "user" | "assistant" | "system";
   speaker: string;
   text: string;
   timestampMs?: number;
+  images?: ChatImage[];
 };
 
 export type SendStatus = "idle" | "awaiting-user" | "timeout" | "error" | "cancelled";

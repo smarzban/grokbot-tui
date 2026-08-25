@@ -1,9 +1,9 @@
-import type { ChatTurn } from "../client/types.js";
+import type { ChatImage, ChatTurn } from "../client/types.js";
 
 export type TranscriptAlign = "start" | "end";
 
 export type TranscriptRow = {
-  kind: "speaker" | "body" | "empty";
+  kind: "speaker" | "body" | "image" | "empty";
   text: string;
   role?: ChatTurn["role"];
   align: TranscriptAlign;
@@ -19,9 +19,14 @@ export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
   return role === "user" ? "end" : "start";
 }
 
-/** Max wrap width for user bodies (~55% of the pane). Assistant uses the full width. */
+/** Wrap to the full pane. User lines are then padStart'd to this same width. */
+export function wrapWidth(paneWidth: number): number {
+  return Math.max(1, paneWidth);
+}
+
+/** @deprecated Use wrapWidth. Kept so older tests that imported the 55% helper still typecheck if any remain. */
 export function userColumnWidth(width: number): number {
-  return Math.max(8, Math.floor(width * 0.55));
+  return wrapWidth(width);
 }
 
 /** Pad `text` so it hugs the right edge of `width`. Does not truncate shorter labels. */
@@ -82,6 +87,7 @@ function isNonChatToolSpeaker(speaker: string): boolean {
 }
 
 export function isVisibleChatTurn(turn: ChatTurn): boolean {
+  if ((turn.images?.length ?? 0) > 0) return true;
   if (turn.role === "user") return true;
   if (isNonChatToolSpeaker(turn.speaker) && turn.text.trim().length === 0) return false;
   return true;
@@ -93,25 +99,43 @@ export function speakerLabel(turn: ChatTurn, agentName: string): string {
   return name.length > 0 ? name : "bot";
 }
 
+export function imagePlaceholder(image: ChatImage): string {
+  const name = image.alt?.trim();
+  return name ? `[image] ${name}` : "[image]";
+}
+
+function paint(text: string, align: TranscriptAlign, paneWidth: number): string {
+  return align === "end" ? alignEnd(text, paneWidth) : text;
+}
+
 export function turnsToRows(turns: ChatTurn[], width: number, agentName: string): TranscriptRow[] {
   const paneWidth = Math.max(1, width);
-  const userWrap = userColumnWidth(paneWidth);
+  const bodyWidth = wrapWidth(paneWidth);
   const rows: TranscriptRow[] = [];
   for (const turn of turns) {
     if (!isVisibleChatTurn(turn)) continue;
     const align = turnAlign(turn.role);
-    const bodyWidth = align === "end" ? userWrap : paneWidth;
     const label = speakerLabel(turn, agentName);
     rows.push({
       kind: "speaker",
-      text: align === "end" ? alignEnd(label, paneWidth) : label,
+      text: paint(label, align, paneWidth),
       role: turn.role,
       align,
     });
-    for (const line of wrapText(turn.text, bodyWidth)) {
+    if (turn.text.trim().length > 0) {
+      for (const line of wrapText(turn.text, bodyWidth)) {
+        rows.push({
+          kind: "body",
+          text: paint(line, align, paneWidth),
+          role: turn.role,
+          align,
+        });
+      }
+    }
+    for (const image of turn.images ?? []) {
       rows.push({
-        kind: "body",
-        text: align === "end" ? alignEnd(line, paneWidth) : line,
+        kind: "image",
+        text: paint(imagePlaceholder(image), align, paneWidth),
         role: turn.role,
         align,
       });
@@ -159,17 +183,70 @@ export function takeLastRows(rows: TranscriptRow[], maxLines: number): Transcrip
   return rows.slice(rows.length - maxLines);
 }
 
+export function maxScrollOffset(rowCount: number, budget: number): number {
+  return Math.max(0, rowCount - Math.max(1, budget));
+}
+
+export function clampScrollOffset(offset: number, rowCount: number, budget: number): number {
+  const max = maxScrollOffset(rowCount, budget);
+  if (!Number.isFinite(offset) || offset <= 0) return 0;
+  return Math.min(Math.floor(offset), max);
+}
+
+/**
+ * Offset is lines from the bottom. 0 means pinned to latest.
+ * When new rows append and the user is scrolled up, grow the offset so the
+ * same history stays on screen (idle poll must not yank to the bottom).
+ */
+export function adjustScrollOffset(input: {
+  offset: number;
+  prevRowCount: number;
+  nextRowCount: number;
+  budget: number;
+}): number {
+  if (input.offset <= 0) return 0;
+  const grown = Math.max(0, input.nextRowCount - input.prevRowCount);
+  return clampScrollOffset(input.offset + grown, input.nextRowCount, input.budget);
+}
+
 export type VisibleTranscript = {
   rows: TranscriptRow[];
   clipped: boolean;
+  moreBelow: boolean;
+  offset: number;
+  maxOffset: number;
+  pinned: boolean;
 };
 
-/** Clip to a wrapped-line budget, leaving room for a leading ellipsis when truncated. */
-export function visibleTranscript(rows: TranscriptRow[], budget: number): VisibleTranscript {
-  if (budget <= 0) return { rows: [], clipped: rows.length > 0 };
-  if (rows.length <= budget) return { rows, clipped: false };
-  if (budget === 1) return { rows: takeLastRows(rows, 1), clipped: true };
-  return { rows: takeLastRows(rows, budget - 1), clipped: true };
+/** Clip to a wrapped-line budget. offset is how many rows above the bottom to shift. */
+export function visibleTranscript(
+  rows: TranscriptRow[],
+  budget: number,
+  offsetFromBottom = 0,
+): VisibleTranscript {
+  if (budget <= 0) {
+    return { rows: [], clipped: rows.length > 0, moreBelow: false, offset: 0, maxOffset: 0, pinned: true };
+  }
+  if (rows.length <= budget) {
+    return { rows, clipped: false, moreBelow: false, offset: 0, maxOffset: 0, pinned: true };
+  }
+  const maxOffset = maxScrollOffset(rows.length, budget);
+  const offset = clampScrollOffset(offsetFromBottom, rows.length, budget);
+  const end = rows.length - offset;
+  const moreBelow = end < rows.length;
+  const moreAbove = end - budget > 0;
+  let take = budget;
+  if (moreAbove) take -= 1;
+  if (moreBelow && take > 1) take -= 1;
+  const start = Math.max(0, end - take);
+  return {
+    rows: rows.slice(start, end),
+    clipped: start > 0,
+    moreBelow,
+    offset,
+    maxOffset,
+    pinned: offset === 0,
+  };
 }
 
 export function shortIdPrefix(id: string): string {

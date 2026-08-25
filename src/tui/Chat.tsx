@@ -4,6 +4,7 @@ import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
 import {
+  adjustScrollOffset,
   chromeRows,
   composeVisible,
   innerWidth,
@@ -56,6 +57,7 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "loading" });
+  const [scrollOffset, setScrollOffset] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -64,8 +66,20 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
   const agentId = agent.id;
   const displayName = agent.name.trim() || "agent";
 
+  const { width, height } = termSize(columns, rows);
+  const inner = innerWidth(width);
+  const transcriptH = Math.max(3, height - chromeRows());
+  const lineBudget = Math.max(1, transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0));
+  const allRows = useMemo(
+    () => turnsToRows(turns, inner, displayName),
+    [turns, inner, displayName],
+  );
+  const rowCount = allRows.length;
+  const prevRowCountRef = useRef(rowCount);
+
   const load = useCallback(async () => {
     setStatus({ kind: "loading" });
+    setScrollOffset(0);
     try {
       const history = await client.getTranscript(agentId);
       setTurns(history);
@@ -82,6 +96,18 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
       abortRef.current?.abort();
     };
   }, [load]);
+
+  useEffect(() => {
+    setScrollOffset((offset) =>
+      adjustScrollOffset({
+        offset,
+        prevRowCount: prevRowCountRef.current,
+        nextRowCount: rowCount,
+        budget: lineBudget,
+      }),
+    );
+    prevRowCountRef.current = rowCount;
+  }, [rowCount, lineBudget]);
 
   useEffect(() => {
     if (!shouldPollTranscript(status.kind)) return;
@@ -121,6 +147,7 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
       };
       setTurns((current) => [...current, optimistic]);
       setDraft("");
+      setScrollOffset(0);
       setStatus({ kind: "sending" });
 
       const controller = new AbortController();
@@ -152,6 +179,7 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
             },
           ]);
         }
+        setScrollOffset(0);
         if (result.status === "awaiting-user") {
           setStatus({ kind: "awaiting-user" });
         } else if (result.status === "timeout") {
@@ -170,6 +198,8 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
     },
     [agent.name, agentId, client, timeoutMs],
   );
+
+  const page = Math.max(1, Math.floor(lineBudget / 2));
 
   useInput((input, key) => {
     const current = statusRef.current;
@@ -194,6 +224,22 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
       exit();
       return;
     }
+    if (key.pageUp || (key.ctrl && input === "u")) {
+      setScrollOffset((offset) => offset + page);
+      return;
+    }
+    if (key.pageDown || (key.ctrl && input === "d")) {
+      setScrollOffset((offset) => Math.max(0, offset - page));
+      return;
+    }
+    if (key.home) {
+      setScrollOffset(Number.MAX_SAFE_INTEGER);
+      return;
+    }
+    if (key.end) {
+      setScrollOffset(0);
+      return;
+    }
     if (current.kind === "sending" || current.kind === "loading") {
       return;
     }
@@ -209,15 +255,10 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
     if (input) setDraft((value) => value + input);
   });
 
-  const { width, height } = termSize(columns, rows);
-  const inner = innerWidth(width);
-  const transcriptH = Math.max(3, height - chromeRows());
-  const lineBudget = Math.max(1, transcriptInnerHeight(height) - (status.kind === "error" ? 1 : 0));
-  const allRows = useMemo(
-    () => turnsToRows(turns, inner, displayName),
-    [turns, inner, displayName],
+  const view = useMemo(
+    () => visibleTranscript(allRows, lineBudget, scrollOffset),
+    [allRows, lineBudget, scrollOffset],
   );
-  const view = useMemo(() => visibleTranscript(allRows, lineBudget), [allRows, lineBudget]);
   const composed = composeVisible(draft, inner);
   const canType = status.kind !== "sending" && status.kind !== "loading";
   const busy = status.kind === "sending";
@@ -259,11 +300,12 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
                 return <Text key={`e-${i}`}> </Text>;
               }
               const isUser = row.align === "end";
-              const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : "white";
+              const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : row.kind === "image" ? "yellow" : "white";
               return (
                 <Text
                   key={`${row.kind}-${i}-${row.text.trimStart().slice(0, 16)}`}
                   bold={row.kind === "speaker"}
+                  dimColor={row.kind === "image"}
                   color={color}
                   wrap="truncate"
                 >
@@ -271,6 +313,7 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
                 </Text>
               );
             })}
+            {view.moreBelow ? <Text dimColor>···</Text> : null}
           </>
         )}
       </Box>
@@ -298,8 +341,8 @@ export function Chat({ client, agent, timeoutMs, pollMs = DEFAULT_POLL_MS, onSwi
       <Box height={1} overflow="hidden" paddingX={1}>
         <Text dimColor>
           {busy
-            ? "Esc cancel  ·  Ctrl+b switch  ·  Ctrl+c quit"
-            : "Enter send  ·  Esc bots  ·  Ctrl+b switch  ·  Ctrl+c quit"}
+            ? "PgUp/Dn scroll  ·  Esc cancel  ·  Ctrl+c quit"
+            : "PgUp/Dn scroll  ·  Enter send  ·  Esc bots  ·  Ctrl+c quit"}
         </Text>
       </Box>
     </Box>
