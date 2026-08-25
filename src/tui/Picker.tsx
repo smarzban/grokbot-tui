@@ -31,7 +31,7 @@ export function Picker({ agents, source, onSelect, onRefresh }: Props) {
       setIndex((current) => (current >= agents.length - 1 ? 0 : current + 1));
       return;
     }
-    if (key.return) {
+    if (key.return || input === "\r" || input === "\n") {
       const agent = agents[index];
       if (agent) onSelect(agent);
     }

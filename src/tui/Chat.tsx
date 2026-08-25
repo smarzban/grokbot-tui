@@ -1,5 +1,4 @@
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import TextInput from "ink-text-input";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
@@ -31,6 +30,10 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const abortRef = useRef<AbortController | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const statusRef = useRef(status);
+  statusRef.current = status;
   const agentId = agent.id;
 
   const load = useCallback(async () => {
@@ -52,14 +55,10 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
     };
   }, [load]);
 
-  const cancelWait = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
-
   const send = useCallback(
     async (text: string) => {
       const prompt = text.trim();
-      if (!prompt || status.kind === "sending") return;
+      if (!prompt || statusRef.current.kind === "sending") return;
 
       const optimistic: ChatTurn = {
         id: `local-${Date.now()}`,
@@ -87,13 +86,20 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
           return;
         }
         const history = await client.getTranscript(agentId);
-        setTurns(history.length > 0 ? history : [...(result.reply ? [optimistic, {
-          id: `reply-${Date.now()}`,
-          role: "assistant" as const,
-          speaker: agent.name,
-          text: result.reply,
-          timestampMs: Date.now(),
-        }] : [optimistic])]);
+        if (history.length > 0) {
+          setTurns(history);
+        } else if (result.reply) {
+          setTurns([
+            optimistic,
+            {
+              id: `reply-${Date.now()}`,
+              role: "assistant",
+              speaker: agent.name,
+              text: result.reply,
+              timestampMs: Date.now(),
+            },
+          ]);
+        }
         if (result.status === "awaiting-user") {
           setStatus({ kind: "awaiting-user" });
         } else if (result.status === "timeout") {
@@ -110,13 +116,14 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
         abortRef.current = null;
       }
     },
-    [agent.name, agentId, client, status.kind, timeoutMs],
+    [agent.name, agentId, client, timeoutMs],
   );
 
   useInput((input, key) => {
+    const current = statusRef.current;
     if (key.escape) {
-      if (status.kind === "sending") {
-        cancelWait();
+      if (current.kind === "sending") {
+        abortRef.current?.abort();
         void client.interrupt(agentId).catch(() => undefined);
         return;
       }
@@ -124,8 +131,8 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
       return;
     }
     if (key.ctrl && input === "b") {
-      if (status.kind === "sending") {
-        cancelWait();
+      if (current.kind === "sending") {
+        abortRef.current?.abort();
         void client.interrupt(agentId).catch(() => undefined);
       }
       onSwitch();
@@ -133,11 +140,26 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
     }
     if (key.ctrl && input === "c") {
       exit();
+      return;
     }
+    if (current.kind === "sending" || current.kind === "loading") {
+      return;
+    }
+    if (key.return) {
+      void send(draftRef.current);
+      return;
+    }
+    if (key.backspace || key.delete) {
+      setDraft((value) => value.slice(0, -1));
+      return;
+    }
+    if (key.ctrl || key.meta) return;
+    if (input) setDraft((value) => value + input);
   });
 
-  const rows = stdout?.rows ?? 24;
-  const transcriptBudget = Math.max(4, rows - 8);
+  const rows = stdout?.rows;
+  const cols = stdout?.columns;
+  const transcriptBudget = Math.max(4, (rows ?? 24) - 10);
   const shown = useMemo(() => visibleTurns(turns, transcriptBudget), [turns, transcriptBudget]);
 
   const statusLine =
@@ -154,13 +176,16 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
               : "";
 
   return (
-    <Box flexDirection="column" height={rows} width={stdout?.columns}>
+    <Box flexDirection="column" {...(rows ? { height: rows } : {})} {...(cols ? { width: cols } : {})}>
       <Box paddingX={1} borderStyle="single" borderColor="cyan">
         <Text>
           <Text bold color="cyan">
             {agent.name}
           </Text>
-          <Text dimColor>  {agent.id}  ·  {client.source}</Text>
+          <Text dimColor>
+            {"  "}
+            {agent.id}  ·  {client.source}
+          </Text>
         </Text>
       </Box>
 
@@ -182,18 +207,15 @@ export function Chat({ client, agent, timeoutMs, onSwitch }: Props) {
 
       <Box paddingX={1} borderStyle="single" borderColor={status.kind === "sending" ? "yellow" : "gray"}>
         <Text color="cyan">{"> "}</Text>
-        <TextInput
-          value={draft}
-          onChange={setDraft}
-          onSubmit={(value) => {
-            void send(value);
-          }}
-          placeholder={status.kind === "sending" ? "waiting…" : "message"}
-          focus={status.kind !== "sending" && status.kind !== "loading"}
-        />
+        <Text>
+          {draft}
+          {status.kind !== "sending" && status.kind !== "loading" ? <Text inverse> </Text> : null}
+        </Text>
       </Box>
       <Box paddingX={1}>
-        <Text dimColor>enter send  esc {status.kind === "sending" ? "cancel" : "bots"}  ctrl+b switch  ctrl+c quit</Text>
+        <Text dimColor>
+          enter send  esc {status.kind === "sending" ? "cancel" : "bots"}  ctrl+b switch  ctrl+c quit
+        </Text>
       </Box>
     </Box>
   );

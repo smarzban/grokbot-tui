@@ -50,6 +50,13 @@ async function main(argv: string[]): Promise<void> {
   if (agentFlag) config.defaultAgent = agentFlag;
 
   const token = readToken();
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    process.stderr.write(
+      "grok-tui needs an interactive terminal. Run `npm start` in your own TTY, or `npm start -- --mock` to try the mock host.\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
   render(<App config={config} token={token} mock={mock} />);
 }
 

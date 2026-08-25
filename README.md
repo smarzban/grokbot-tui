@@ -41,7 +41,7 @@ cp .env.example .env
 npm start
 ```
 
-Mock host, no live Grok Bot (proves the TUI wiring):
+Needs an interactive terminal (TTY). Mock host, no live Grok Bot (proves the TUI wiring):
 
 ```sh
 npm start -- --mock

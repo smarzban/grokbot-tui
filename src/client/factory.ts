@@ -1,7 +1,7 @@
 import { discoverGateway, GrokBotGatewayError } from "@adam91holt/grokbot-sdk";
 import { defaultLocalGatewayUrl, type AppConfig } from "../config.js";
 import { loadDesktopSession } from "./desktop.js";
-import { HOST_DOWN_MESSAGE, MISSING_AUTH_MESSAGE } from "./errors.js";
+import { MISSING_AUTH_MESSAGE } from "./errors.js";
 import { createSdkBot, GatewayHostClient } from "./host.js";
 import { MockHostClient, type MockHostOptions } from "./mock.js";
 import { HostClientError, type HostClient } from "./types.js";
@@ -73,8 +73,4 @@ export async function openHostClient(options: OpenClientOptions): Promise<HostCl
   }
 
   throw new HostClientError("missing-auth", MISSING_AUTH_MESSAGE);
-}
-
-export function hostDownError(): HostClientError {
-  return new HostClientError("host-down", HOST_DOWN_MESSAGE);
 }

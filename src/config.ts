@@ -35,7 +35,7 @@ export type ResolvedSecrets = {
 };
 
 export function loadDotEnvFile(): void {
-  loadDotenv();
+  loadDotenv({ quiet: true });
 }
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
