@@ -6,11 +6,9 @@ import {
   agentLabel,
   alignBlockEnd,
   chromeRows,
-  composeVisible,
   gapAfterTurn,
   MESSAGE_WRAP_RATIO,
   speakerLabel,
-  takeLastRows,
   TRANSCRIPT_JUSTIFY,
   TRANSCRIPT_PAD_BOTTOM,
   transcriptInnerHeight,
@@ -47,19 +45,19 @@ test("turnsToRows budgets a long reply by wrapped lines, not turns", () => {
   assert.equal(speakers.length, 0, "1:1 chats hide you/bot speaker labels");
   const body = rows.filter((row) => row.kind === "body");
   assert.ok(body.length > 1, "long assistant text should wrap onto several lines");
-  const clipped = takeLastRows(rows, 4);
-  assert.equal(clipped.length, 4);
+  const clipped = visibleTranscript(rows, 4).rows;
+  assert.equal(clipped.length, 3);
   assert.equal(clipped.some((row) => row.kind === "speaker" && row.text.trim() === "you"), false);
   assert.ok(clipped.some((row) => row.kind === "body"));
 });
 
-test("takeLastRows keeps the end of a single overflowing turn", () => {
+test("visibleTranscript keeps the end of a single overflowing turn", () => {
   const turns: ChatTurn[] = [
     { id: "1", role: "assistant", speaker: "Dev", text: "alpha beta gamma delta epsilon" },
   ];
   const rows = turnsToRows(turns, 6, "Dev");
-  const clipped = takeLastRows(rows, 3);
-  assert.equal(clipped.length, 3);
+  const clipped = visibleTranscript(rows, 3).rows;
+  assert.equal(clipped.length, 2);
   assert.equal(clipped[0]?.kind === "speaker", false);
 });
 
@@ -85,13 +83,6 @@ test("agentLabel hides ids unless names collide", () => {
   assert.equal(agentLabel(ada, [ada, bea]), "Ada");
   assert.match(agentLabel(ada, [ada, ada2]), /^Ada · /);
   assert.doesNotMatch(agentLabel(ada, [ada, ada2]), /11111111-1111/);
-});
-
-test("composeVisible shows a tail when the draft is wider than the bar", () => {
-  const shown = composeVisible("abcdefghijklmnopqrstuvwxyz", 8);
-  assert.equal(shown.prefix.length, 7);
-  assert.equal(shown.prefix.endsWith("z"), true);
-  assert.equal(shown.caret, true);
 });
 
 test("transcript inner height leaves room for chrome and a bottom padding row", () => {

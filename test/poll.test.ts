@@ -30,10 +30,14 @@ test("transcriptChanged is true when count, last id, or last text differs", () =
 
 test("shouldPollTranscript skips sending and initial loading", () => {
   assert.equal(shouldPollTranscript("idle"), true);
-  assert.equal(shouldPollTranscript("awaiting-user"), true);
   assert.equal(shouldPollTranscript("error"), true);
   assert.equal(shouldPollTranscript("sending"), false);
   assert.equal(shouldPollTranscript("loading"), false);
+});
+
+test("transcriptChanged notices earlier-turn edits when length is unchanged", () => {
+  const earlier = { ...you, text: "hi there" };
+  assert.equal(transcriptChanged([you, bot], [earlier, bot]), true);
 });
 
 test("parsePollMs defaults to 1500 and rejects tiny intervals", () => {

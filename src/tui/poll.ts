@@ -1,14 +1,7 @@
+import { DEFAULT_POLL_MS, MIN_POLL_MS, parsePollMs } from "../timing.js";
 import type { ChatTurn } from "../client/types.js";
 
-export const DEFAULT_POLL_MS = 1500;
-export const MIN_POLL_MS = 250;
-
-export function parsePollMs(raw: string | undefined, fallback = DEFAULT_POLL_MS): number {
-  if (raw == null || raw.trim() === "") return fallback;
-  const n = Number.parseInt(raw.trim(), 10);
-  if (!Number.isFinite(n) || n < MIN_POLL_MS) return fallback;
-  return n;
-}
+export { DEFAULT_POLL_MS, MIN_POLL_MS, parsePollMs };
 
 /** Poll while viewing chat; never while the initial load or an in-flight send is running. */
 export function shouldPollTranscript(kind: string): boolean {
@@ -21,12 +14,17 @@ function imageSig(turn: ChatTurn): string {
     .join("\x01");
 }
 
+function turnSig(turn: ChatTurn): string {
+  return `${turn.id}\0${turn.role}\0${turn.speaker}\0${turn.text}\0${imageSig(turn)}`;
+}
+
 /** True when a polled snapshot is worth replacing the on-screen turns. */
 export function transcriptChanged(prev: ChatTurn[], next: ChatTurn[]): boolean {
   if (prev.length !== next.length) return true;
-  const a = prev.at(-1);
-  const b = next.at(-1);
-  if (a == null && b == null) return false;
-  if (a == null || b == null) return true;
-  return a.id !== b.id || a.text !== b.text || a.role !== b.role || imageSig(a) !== imageSig(b);
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (a == null || b == null || turnSig(a) !== turnSig(b)) return true;
+  }
+  return false;
 }

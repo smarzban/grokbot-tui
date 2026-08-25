@@ -14,12 +14,6 @@ export type TranscriptRow = {
   pictureSlot?: number;
 };
 
-export type TranscriptBlock = {
-  align: TranscriptAlign;
-  role?: ChatTurn["role"];
-  rows: TranscriptRow[];
-};
-
 export function turnAlign(role: ChatTurn["role"]): TranscriptAlign {
   return role === "user" ? "end" : "start";
 }
@@ -30,16 +24,6 @@ export const MESSAGE_WRAP_RATIO = 0.9;
 /** Wrap width = 90% of the pane. User turns are then shifted as a block (see alignBlockEnd). */
 export function wrapWidth(paneWidth: number): number {
   return Math.max(1, Math.floor(Math.max(0, paneWidth) * MESSAGE_WRAP_RATIO));
-}
-
-/** @deprecated Use wrapWidth. Kept so older tests that imported the 55% helper still typecheck if any remain. */
-export function userColumnWidth(width: number): number {
-  return wrapWidth(width);
-}
-
-/** Pad a single line so it hugs the right edge of `width`. */
-export function alignEnd(text: string, width: number): string {
-  return alignBlockEnd([text], width)[0] ?? text;
 }
 
 /**
@@ -156,8 +140,6 @@ export function speakerLabel(turn: ChatTurn, agentNameOrCtx: string | SpeakerCon
   return name.length > 0 ? name : "bot";
 }
 
-export { imagePlaceholder } from "./images.js";
-
 /**
  * Blank rows after a turn, before the next visible turn.
  * 1:1 user↔assistant is two; rooms opposite-side is one; consecutive
@@ -253,41 +235,6 @@ export function turnsToRows(
     }
   }
   return rows;
-}
-
-export function groupTranscriptRows(rows: TranscriptRow[]): TranscriptBlock[] {
-  const blocks: TranscriptBlock[] = [];
-  let current: TranscriptRow[] = [];
-  let align: TranscriptAlign | undefined;
-  let role: ChatTurn["role"] | undefined;
-
-  const flush = () => {
-    if (current.length === 0 || align == null) return;
-    blocks.push({ align, role, rows: current });
-    current = [];
-    align = undefined;
-    role = undefined;
-  };
-
-  for (const row of rows) {
-    if (row.kind === "empty") {
-      flush();
-      continue;
-    }
-    if (align != null && row.align !== align) flush();
-    align = row.align;
-    role = row.role;
-    current.push(row);
-  }
-  flush();
-  return blocks;
-}
-
-/** Keep the latest rows so a long last reply still fits by showing its end. */
-export function takeLastRows(rows: TranscriptRow[], maxLines: number): TranscriptRow[] {
-  if (maxLines < 1) return [];
-  if (rows.length <= maxLines) return rows;
-  return rows.slice(rows.length - maxLines);
 }
 
 export function maxScrollOffset(rowCount: number, budget: number): number {
@@ -394,12 +341,6 @@ export function isFullPictureRun(
     }
   }
   return true;
-}
-
-export function composeVisible(draft: string, width: number): { prefix: string; caret: boolean } {
-  const max = Math.max(1, width - 1);
-  if (draft.length <= max) return { prefix: draft, caret: true };
-  return { prefix: draft.slice(draft.length - max), caret: true };
 }
 
 /** Blank row inside the transcript frame, above the bottom border. */

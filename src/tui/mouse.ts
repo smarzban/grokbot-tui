@@ -1,4 +1,4 @@
-import { applyScrollDelta, clampScrollOffset } from "./layout.js";
+import { applyScrollDelta } from "./layout.js";
 
 /** Lines per wheel tick / arrow key. Matches a typical terminal wheel mapping. */
 export const WHEEL_LINE_DELTA = 3;
@@ -24,29 +24,6 @@ const X10_AT_START = /^(?:\x1b)?\[M[\s\S]{3}/;
 
 /** Shift / Alt / Ctrl bits on SGR button codes. */
 const MODIFIER_MASK = 0b11100;
-
-export function parseSgrMouse(seq: string): ParsedMouse | null {
-  const m = /^(?:\x1b)?\[<(\d+);(\d+);(\d+)([Mm])$/.exec(seq);
-  if (!m || m[1] == null || m[2] == null || m[3] == null || m[4] == null) return null;
-  return {
-    button: Number(m[1]),
-    x: Number(m[2]),
-    y: Number(m[3]),
-    release: m[4] === "m",
-  };
-}
-
-export function parseX10Mouse(seq: string): ParsedMouse | null {
-  const m = /^(?:\x1b)?\[M([\s\S]{3})$/.exec(seq);
-  if (!m || m[1] == null) return null;
-  const bytes = m[1];
-  return {
-    button: bytes.charCodeAt(0) - 32,
-    x: bytes.charCodeAt(1) - 32,
-    y: bytes.charCodeAt(2) - 32,
-    release: false,
-  };
-}
 
 /**
  * Pull complete SGR / X10 mouse reports out of a stdin chunk.
@@ -87,37 +64,10 @@ export function consumeMouseInput(input: string): { events: ParsedMouse[]; rest:
   return { events, rest };
 }
 
-export function isMouseInput(input: string): boolean {
-  if (!input) return false;
-  const { events, rest } = consumeMouseInput(input);
-  return events.length > 0 && rest.length === 0;
-}
-
 /** Positive = older (increase offset). Null if this button is not a vertical wheel. */
 export function scrollDeltaForButton(button: number): number | null {
   const base = button & ~MODIFIER_MASK;
   if (base === WHEEL_UP_BUTTON) return WHEEL_LINE_DELTA;
   if (base === WHEEL_DOWN_BUTTON) return -WHEEL_LINE_DELTA;
   return null;
-}
-
-export function applyWheelScroll(
-  offset: number,
-  direction: "up" | "down",
-  rowCount: number,
-  budget: number,
-): number {
-  const delta = direction === "up" ? WHEEL_LINE_DELTA : -WHEEL_LINE_DELTA;
-  return applyScrollDelta(offset, delta, rowCount, budget);
-}
-
-export function applyWheelButton(
-  offset: number,
-  button: number,
-  rowCount: number,
-  budget: number,
-): number {
-  const delta = scrollDeltaForButton(button);
-  if (delta == null) return clampScrollOffset(offset, rowCount, budget);
-  return applyScrollDelta(offset, delta, rowCount, budget);
 }

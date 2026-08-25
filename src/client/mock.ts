@@ -3,20 +3,19 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { HOST_DOWN_MESSAGE, MISSING_AUTH_MESSAGE } from "./errors.js";
 import { DEFAULT_TRANSCRIPT_LIMIT, HostClientError } from "./types.js";
-import type { Agent, ChatTurn, Health, HostClient, SendPromptInput, SendResult } from "./types.js";
+import type { Agent, ChatTurn, HostClient, SendPromptInput, SendResult } from "./types.js";
 
 export type MockHostOptions = {
   agents?: Agent[];
   transcripts?: Record<string, ChatTurn[]>;
   replyDelayMs?: number;
   replyFor?: (prompt: string, agent: Agent) => string;
-  healthOk?: boolean;
   missingAuth?: boolean;
   hostDown?: boolean;
 };
 
 export const ADA_ID = "11111111-1111-4111-8111-111111111111";
-export const BEA_ID = "22222222-2222-4222-8222-222222222222";
+const BEA_ID = "22222222-2222-4222-8222-222222222222";
 export const DEV_ID = "33333333-3333-4333-8333-333333333333";
 export const CHIEF_ID = "44444444-4444-4444-8444-444444444444";
 export const PROJECT_X_ID = "55555555-5555-4555-8555-555555555555";
@@ -128,7 +127,6 @@ export class MockHostClient implements HostClient {
   readonly #transcripts: Map<string, ChatTurn[]>;
   readonly #replyDelayMs: number;
   readonly #replyFor: (prompt: string, agent: Agent) => string;
-  readonly #healthOk: boolean;
   readonly #missingAuth: boolean;
   readonly #hostDown: boolean;
   #seq = 0;
@@ -144,7 +142,6 @@ export class MockHostClient implements HostClient {
     this.#replyFor =
       options.replyFor ??
       ((prompt, agent) => `${agent.name} here. I received: ${prompt}`);
-    this.#healthOk = options.healthOk !== false;
     this.#missingAuth = options.missingAuth === true;
     this.#hostDown = options.hostDown === true;
   }
@@ -153,14 +150,9 @@ export class MockHostClient implements HostClient {
     if (this.#missingAuth) {
       throw new HostClientError("missing-auth", MISSING_AUTH_MESSAGE);
     }
-    if (this.#hostDown || !this.#healthOk) {
+    if (this.#hostDown) {
       throw new HostClientError("host-down", HOST_DOWN_MESSAGE);
     }
-  }
-
-  async health(): Promise<Health> {
-    this.#guard();
-    return { ok: true, busy: false, activeAgentId: null };
   }
 
   async listAgents(): Promise<Agent[]> {

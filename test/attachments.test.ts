@@ -108,7 +108,7 @@ test("hydrateTurnImages fetches https url when there is no host path", async () 
   resetAttachmentCacheForTests();
   const cache = mkdtempSync(join(tmpdir(), "grok-tui-url-"));
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: string | URL | Request) => {
     const href = String(input);
     assert.ok(href.startsWith("https://files.example/"));
     return new Response(TINY_PNG, { status: 200, headers: { "content-type": "image/png" } });

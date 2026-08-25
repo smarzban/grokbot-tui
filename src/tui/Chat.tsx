@@ -54,6 +54,7 @@ type Props = {
   roster?: Agent[];
   timeoutMs?: number;
   pollMs?: number;
+  onRoster?: (agents: Agent[]) => void;
   onSwitch: () => void;
 };
 
@@ -61,7 +62,6 @@ type Status =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "sending" }
-  | { kind: "awaiting-user" }
   | { kind: "error"; message: string };
 
 type Draft = { text: string; caret: number };
@@ -84,8 +84,6 @@ function headerStatus(status: Status, isGroup = false, answering = false): strin
       return "loading";
     case "sending":
       return isGroup ? "sent" : "waiting";
-    case "awaiting-user":
-      return "your turn";
     case "error":
       return "error";
     default:
@@ -153,6 +151,7 @@ export function Chat({
   roster = [],
   timeoutMs,
   pollMs = DEFAULT_POLL_MS,
+  onRoster,
   onSwitch,
 }: Props) {
   const { exit } = useApp();
@@ -278,10 +277,12 @@ export function Chat({
     const applyRoster = (nextRoster: Agent[]) => {
       const names = busyMemberNames(agentRef.current, nextRoster);
       const sig = busyNamesSignature(names);
-      if (sig === busySigRef.current) return;
-      busySigRef.current = sig;
-      setAnsweringLine(answeringIndicator(names));
-      setLiveRoster(nextRoster);
+      if (sig !== busySigRef.current) {
+        busySigRef.current = sig;
+        setAnsweringLine(answeringIndicator(names));
+        setLiveRoster(nextRoster);
+      }
+      onRoster?.(nextRoster);
     };
     const tick = async () => {
       if (cancelled) return;
@@ -313,7 +314,7 @@ export function Chat({
       cancelled = true;
       clearInterval(id);
     };
-  }, [agentId, client, pollMs, status.kind]);
+  }, [agentId, client, onRoster, pollMs, status.kind]);
 
   const send = useCallback(
     async (text: string) => {
@@ -346,30 +347,30 @@ export function Chat({
           setStatus({ kind: "idle" });
           return;
         }
-        const history = await client.getTranscript(agentId);
-        if (history.length > 0) {
-          setTurns(history);
-        } else if (result.reply) {
-          setTurns([
-            optimistic,
-            {
-              id: `reply-${Date.now()}`,
-              role: "assistant",
-              speaker: agent.name,
-              text: result.reply,
-              timestampMs: Date.now(),
-            },
-          ]);
-        }
-        setScrollOffset(0);
-        if (isGroup) {
-          setStatus({ kind: "idle" });
-        } else if (result.status === "awaiting-user") {
-          setStatus({ kind: "awaiting-user" });
-        } else if (result.status === "timeout") {
-          setStatus({ kind: "error", message: "Timed out waiting for a reply. Esc cancels; try again." });
-        } else if (result.status === "error") {
-          setStatus({ kind: "error", message: "The host accepted the prompt but did not finish." });
+        // Rooms: keep the optimistic turn until idle poll sees the host commit.
+        // A premature replace with a stale tail flickers the user's message away.
+        if (!isGroup) {
+          const history = await client.getTranscript(agentId);
+          if (history.length > 0) {
+            setTurns(history);
+          } else if (result.reply) {
+            setTurns([
+              optimistic,
+              {
+                id: `reply-${Date.now()}`,
+                role: "assistant",
+                speaker: agent.name,
+                text: result.reply,
+                timestampMs: Date.now(),
+              },
+            ]);
+          }
+          setScrollOffset(0);
+          if (result.status === "timeout") {
+            setStatus({ kind: "error", message: "Timed out waiting for a reply. Esc cancels; try again." });
+          } else {
+            setStatus({ kind: "idle" });
+          }
         } else {
           setStatus({ kind: "idle" });
         }
@@ -424,18 +425,15 @@ export function Chat({
     if (key.tab) return;
     if (key.escape) {
       if (current.kind === "sending") {
+        // Client owns interruptAgentRun when the wait loop sees this abort.
         abortRef.current?.abort();
-        void client.interrupt(agentId).catch(() => undefined);
         return;
       }
       onSwitch();
       return;
     }
     if (isCtrlKey(input, key, "b")) {
-      if (current.kind === "sending") {
-        abortRef.current?.abort();
-        void client.interrupt(agentId).catch(() => undefined);
-      }
+      if (current.kind === "sending") abortRef.current?.abort();
       onSwitch();
       return;
     }

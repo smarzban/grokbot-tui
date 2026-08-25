@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { redact } from "../redact.js";
 import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
 import { isNotFoundError, mapHostError } from "./errors.js";
 import { gatewayPost, trimGatewayUrl, type GatewaySession } from "./http.js";
-import { redact } from "../redact.js";
 import {
   asAgentRow,
   assistantCount,
@@ -17,7 +17,6 @@ import {
   HostClientError,
   type Agent,
   type ChatTurn,
-  type Health,
   type HostClient,
   type HostSource,
   type SendPromptInput,
@@ -49,7 +48,7 @@ function mapSessionError(err: unknown, session: GatewaySession): HostClientError
 
 /**
  * Host client over our POST helper. Used for env URL+token and the desktop session.
- * Does not probe GET /health.
+ * Connectivity is listAgents — there is no health probe.
  */
 export class HttpHostClient implements HostClient {
   readonly source: HostSource;
@@ -72,10 +71,6 @@ export class HttpHostClient implements HostClient {
 
   #call(method: string, body: unknown = {}): Promise<unknown> {
     return gatewayPost(this.#session, method, body, this.#fetchImpl());
-  }
-
-  async health(): Promise<Health> {
-    return { ok: true };
   }
 
   async listAgents(): Promise<Agent[]> {
@@ -174,11 +169,16 @@ export class HttpHostClient implements HostClient {
   ): Promise<{ status: SendResult["status"]; text?: string }> {
     const timeoutMs = input.timeoutMs;
     const startedAt = Date.now();
-    while (true) {
-      if (input.signal?.aborted) {
+    let interrupted = false;
+    const cancel = async (): Promise<{ status: "cancelled" }> => {
+      if (!interrupted) {
+        interrupted = true;
         await this.interrupt(input.agentId).catch(() => undefined);
-        return { status: "cancelled" };
       }
+      return { status: "cancelled" };
+    };
+    while (true) {
+      if (input.signal?.aborted) return cancel();
       const turns = await this.getTranscript(input.agentId);
       const count = assistantCount(turns);
       const text = lastAssistantText(turns);
@@ -191,8 +191,7 @@ export class HttpHostClient implements HostClient {
       try {
         await delay(250, undefined, { signal: input.signal });
       } catch {
-        await this.interrupt(input.agentId).catch(() => undefined);
-        return { status: "cancelled" };
+        return cancel();
       }
     }
   }

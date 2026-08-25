@@ -1,8 +1,38 @@
-# grok-bot-tui
+# grokbot-tui
 
 Unofficial terminal UI for chatting with your Grok Bot agents while you work.
 
 **This is not an official xAI or Cursor product.** There is no public Grok Bot chat API. The TUI talks to the undocumented host HTTP gateway with its own small client: `POST {gatewayUrl}/api/{method}` plus `Authorization: Bearer {token}` and any desktop session headers. It does not use `@adam91holt/grokbot-sdk` or `grok-bot-cli`. Command names and response shapes come from the live host and can change without notice. Treat the gateway token and every transcript as secrets.
+
+## Install
+
+Requires **Node.js 22+**.
+
+```sh
+npm install -g grokbot-tui
+grok-tui
+```
+
+Or without a global install:
+
+```sh
+npx grokbot-tui
+```
+
+From a clone:
+
+```sh
+git clone <this-repo>
+cd grokbot-tui
+npm install
+npm start
+```
+
+Copy env defaults and fill in local secrets (never commit `.env`):
+
+```sh
+cp .env.example .env
+```
 
 ## What v1 does
 
@@ -18,22 +48,6 @@ Unofficial terminal UI for chatting with your Grok Bot agents while you work.
 - Uses the terminal alternate screen so the transcript stays framed instead of spilling into scrollback
 
 Out of scope: creating or deleting rooms, seating members, streaming, creating or deleting agents, Slack, avatars, rich markdown. The TUI does not upload attachments from the compose box.
-
-## Install
-
-Requires **Node.js 22+**.
-
-```sh
-git clone <this-repo>
-cd grok-bot-tui
-npm install
-```
-
-Copy env defaults and fill in local secrets (never commit `.env`):
-
-```sh
-cp .env.example .env
-```
 
 ## Run
 
@@ -91,7 +105,7 @@ Optional: `GROK_TUI_DEFAULT_AGENT=Ada` to open that seat on launch.
 
 Open Grok Bot and sign in. After you Allow the Keychain prompt ("Grok Bot Safe Storage"), this TUI decrypts `~/Library/Application Support/Grok Bot/gateway-descriptor.json` (version 1 `encrypted`, or version 2 a single `entries` blob) using Chromium Safe Storage and the Keychain password. Cleartext is `{ baseUrl, token, headers? }`. Headers often include routing such as `x-anyrun-network-token`; the URL path is kept (only a trailing slash is trimmed).
 
-If no env URL/token is set, that desktop session is used. You should not need to copy a token. There is no `GET /health` probe; `listAgents` is the connectivity check.
+If no env **token** is set, that desktop session is used. A gateway URL alone (without a token) does not block desktop fallback. You should not need to copy a token. `listAgents` is the connectivity check.
 
 ## Env vars
 
@@ -105,6 +119,7 @@ See `.env.example`. Never print, log, or commit `SAND_GATEWAY_TOKEN` or the desk
 | `GROK_TUI_MOCK=1` | Force the in-process mock host |
 | `GROK_TUI_WAIT_TIMEOUT_MS` | Optional cap on wait-for-reply (Esc still cancels) |
 | `GROK_TUI_POLL_MS` | Idle transcript poll interval (default 1500; minimum 250) |
+| `SAND_HOST_PORT` | Localhost port when a token is set without a URL (default 1340) |
 
 ## Tests
 
@@ -113,7 +128,7 @@ npm test
 npm run typecheck
 ```
 
-Client tests drive a **mock host**: in-memory `MockHostClient`, a scripted `fetch` for the owned POST helper (env URL+token), and a scripted desktop gateway (path-preserving URL + extra session headers, no `GET /health`) for `DesktopHostClient`. Coverage includes list, send + poll until reply, host-down, missing/wrong auth, desktop descriptor decrypt with an injected Keychain read, and desktop header/path forwarding.
+Behavioral tests cover the mock host, scripted `fetch` for the owned POST helper, desktop descriptor decrypt (injected Keychain), layout/compose/keys/mouse helpers, and poll/roster logic. Ink screens are not rendered in CI.
 
 This environment usually cannot talk to a real Grok Bot host. Use `--mock` to exercise the TUI; point `.env` at your host to chat for real.
 
@@ -137,9 +152,9 @@ How a turn is drawn:
 | --- | --- |
 | `npm start` | Launch the TUI (`tsx src/cli.tsx`) |
 | `npm run start:mock` | Launch against the mock host |
-| `npm test` | Client tests |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run build` | Compile to `dist/` |
+| `npm test` | Behavioral tests (`tsx --test`) |
+| `npm run typecheck` | `tsc` on `src` and `test` |
+| `npm run build` | Compile to `dist/` (used by `grok-tui` bin) |
 
 ## Security
 
