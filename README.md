@@ -85,7 +85,7 @@ If this TUI runs on the same machine as the host, set:
 
 ```sh
 GROKBOT_GATEWAY_URL=http://127.0.0.1:1340
-SAND_GATEWAY_TOKEN=...   # from the host; do not git this
+GROKBOT_GATEWAY_TOKEN=...   # from the host; do not git this
 ```
 
 ### From a laptop, tunneled gateway
@@ -94,10 +94,10 @@ Reach the host over Tailscale or an SSH tunnel. **Do not put port 1340 on the pu
 
 ```sh
 GROKBOT_GATEWAY_URL=http://<tailscale-or-localhost-tunnel>:1340
-SAND_GATEWAY_TOKEN=...
+GROKBOT_GATEWAY_TOKEN=...
 ```
 
-Aliases accepted: `SAND_GATEWAY_URL`, `GROK_BOT_GATEWAY_URL`, `GROK_BOT_GATEWAY_TOKEN`.
+Legacy names (`SAND_GATEWAY_*`, `GROK_BOT_GATEWAY_*`, `SAND_HOST_PORT`) still work but log a one-time deprecation warning.
 
 Optional: `GROK_TUI_DEFAULT_AGENT=Ada` to open that seat on launch.
 
@@ -109,17 +109,17 @@ If no env **token** is set, that desktop session is used. A gateway URL alone (w
 
 ## Env vars
 
-See `.env.example`. Never print, log, or commit `SAND_GATEWAY_TOKEN` or the desktop session payload. The TUI redacts bearer tokens in error text.
+See `.env.example`. Never print, log, or commit `GROKBOT_GATEWAY_TOKEN` or the desktop session payload. The TUI redacts bearer tokens in error text.
 
 | Variable | Purpose |
 | --- | --- |
 | `GROKBOT_GATEWAY_URL` | Gateway origin (`http://127.0.0.1:1340` or a tunnel). Keep any path; only a trailing slash is trimmed. |
-| `SAND_GATEWAY_TOKEN` | Gateway token |
+| `GROKBOT_GATEWAY_TOKEN` | Gateway token |
+| `GROKBOT_GATEWAY_PORT` | Localhost port when a token is set without a URL (default 1340) |
 | `GROK_TUI_DEFAULT_AGENT` | Optional name or id to open first |
 | `GROK_TUI_MOCK=1` | Force the in-process mock host |
-| `GROK_TUI_WAIT_TIMEOUT_MS` | Optional cap on wait-for-reply (Esc still cancels) |
+| `GROK_TUI_WAIT_TIMEOUT_MS` | Max wait for a 1:1 reply (default 600000; Esc cancels earlier) |
 | `GROK_TUI_POLL_MS` | Idle transcript poll interval (default 1500; minimum 250) |
-| `SAND_HOST_PORT` | Localhost port when a token is set without a URL (default 1340) |
 
 ## Tests
 
@@ -128,7 +128,7 @@ npm test
 npm run typecheck
 ```
 
-Behavioral tests cover the mock host, scripted `fetch` for the owned POST helper, desktop descriptor decrypt (injected Keychain), layout/compose/keys/mouse helpers, and poll/roster logic. Ink screens are not rendered in CI.
+Behavioral tests cover the mock host, scripted `fetch` for the owned POST helper, desktop descriptor decrypt (injected Keychain), layout/compose/keys/mouse helpers, poll/roster logic, config env resolution, and the extracted chat poll snapshot used by `Chat`. Full Ink screen renders are not exercised in CI yet.
 
 This environment usually cannot talk to a real Grok Bot host. Use `--mock` to exercise the TUI; point `.env` at your host to chat for real.
 

@@ -16,7 +16,7 @@ function printHelp(): void {
       "  --agent NAME Open this agent if it exists (name or id)",
       "  --help       Show this help",
       "",
-      "Env: GROKBOT_GATEWAY_URL, SAND_GATEWAY_TOKEN, GROK_TUI_DEFAULT_AGENT, GROK_TUI_MOCK=1",
+      "Env: GROKBOT_GATEWAY_URL, GROKBOT_GATEWAY_TOKEN, GROK_TUI_DEFAULT_AGENT, GROK_TUI_MOCK=1",
       "This is not an official API. See README.md.",
       "",
     ].join("\n"),

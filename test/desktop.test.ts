@@ -247,7 +247,7 @@ test("openHostClient uses desktop source for a desktop session", async () => {
 
 test("openHostClient ignores a URL without a token and uses desktop", async () => {
   const client = await openHostClient({
-    config: { gatewayUrl: "http://stale.example:1340", mock: false },
+    config: { ...readConfig({}), gatewayUrl: "http://stale.example:1340", mock: false },
     env: {},
     loadDesktop: async () => ({
       gatewayUrl: BASE,

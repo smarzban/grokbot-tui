@@ -323,7 +323,7 @@ test("gateway client maps missing/wrong auth", async () => {
 test("openHostClient uses env URL+token through the owned POST helper", async () => {
   const host = createScriptedHost();
   const client = await openHostClient({
-    config: { gatewayUrl: GATEWAY, mock: false },
+    config: { ...readConfig({}), gatewayUrl: GATEWAY, mock: false },
     token: host.token,
     env: {},
     fetch: createScriptedFetch(host),
@@ -350,7 +350,7 @@ test("openHostClient reports missing-auth without a gateway", async () => {
   await assert.rejects(
     () =>
       openHostClient({
-        config: { mock: false },
+        config: { ...readConfig({}), mock: false },
         env: {},
         loadDesktop: async () => null,
       }),
