@@ -87,7 +87,7 @@ function asNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/** Host `getAgentTranscriptTail` is `{ entries, nextBeforeSeq? }`; some calls return the array. */
+/** Host `getAgentTranscriptTail` is `{ entries }`; some calls return the array directly. */
 export function entriesFromTranscriptPayload(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
   if (isRecord(value) && Array.isArray(value.entries)) return value.entries;
@@ -363,12 +363,8 @@ function roleFromEntry(entry: Record<string, unknown>, speaker: string): ChatTur
   return "assistant";
 }
 
-export function parseHostTranscript(payload: unknown): { turns: ChatTurn[]; nextBeforeSeq?: number } {
+export function parseHostTranscript(payload: unknown): ChatTurn[] {
   const entries = entriesFromTranscriptPayload(payload);
-  const nextBeforeSeq =
-    isRecord(payload) && typeof payload.nextBeforeSeq === "number" && Number.isFinite(payload.nextBeforeSeq)
-      ? payload.nextBeforeSeq
-      : undefined;
   const turns: ChatTurn[] = [];
   entries.forEach((raw, index) => {
     const entry = unwrapEntry(raw);
@@ -409,11 +405,11 @@ export function parseHostTranscript(payload: unknown): { turns: ChatTurn[]; next
       images,
     });
   });
-  return { turns, ...(nextBeforeSeq != null ? { nextBeforeSeq } : {}) };
+  return turns;
 }
 
 export function turnsFromHostTranscript(payload: unknown): ChatTurn[] {
-  return parseHostTranscript(payload).turns;
+  return parseHostTranscript(payload);
 }
 
 export function lastAssistantText(turns: ChatTurn[]): string | undefined {

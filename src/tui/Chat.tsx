@@ -46,7 +46,8 @@ import {
 } from "./mentions.js";
 import { isCtrlKey } from "./keys.js";
 import { answeringIndicator, busyMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
-import { DEFAULT_POLL_MS, mergePolledTranscript, shouldPollTranscript } from "./poll.js";
+import { DEFAULT_POLL_MS, shouldPollTranscript } from "./poll.js";
+import { pollChatSnapshot } from "./chatPoll.js";
 
 type Props = {
   client: HostClient;
@@ -169,6 +170,8 @@ export function Chat({
   const [mentionDismissed, setMentionDismissed] = useState(false);
   const [pollReady, setPollReady] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const statusRef = useRef(status);
@@ -290,25 +293,17 @@ export function Chat({
     };
     const tick = async () => {
       if (cancelled) return;
-      if (shouldPollTranscript(statusRef.current.kind)) {
-        try {
-          const history = await client.getTranscript(agentId);
-          if (cancelled) return;
-          if (shouldPollTranscript(statusRef.current.kind)) {
-            setTurns((prev) => mergePolledTranscript(prev, history));
-          }
-        } catch {
-          // Keep the last good transcript; a single failed poll is not an error overlay.
-        }
-      }
+      const snapshot = await pollChatSnapshot({
+        client,
+        agentId,
+        turns: turnsRef.current,
+        statusKind: statusRef.current.kind,
+      });
       if (cancelled) return;
-      try {
-        const nextRoster = await client.listAgents();
-        if (cancelled) return;
-        applyRoster(nextRoster);
-      } catch {
-        // Keep the last answering line; a failed roster poll is not an error overlay.
+      if (shouldPollTranscript(statusRef.current.kind)) {
+        setTurns(snapshot.turns);
       }
+      applyRoster(snapshot.roster);
     };
     void tick();
     const id = setInterval(() => {
