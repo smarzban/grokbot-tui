@@ -93,6 +93,8 @@ export function readRosterCache(key: string, io: RosterCacheIo = {}): Agent[] | 
       const agent = asCachedAgent(row);
       if (agent) agents.push(agent);
     }
+    // Legit empty host roster is a cache hit; rows that all fail validation is a miss.
+    if (agents.length === 0 && raw.agents.length > 0) return undefined;
     return agents;
   } catch {
     return undefined;

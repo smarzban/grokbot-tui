@@ -77,6 +77,22 @@ test("writeRosterCache persists an empty roster so a stale cache is cleared", ()
   }
 });
 
+test("readRosterCache treats all-invalid agent rows as a miss, not an empty hit", () => {
+  const dir = mkdtempSync(join(tmpdir(), "grok-tui-roster-corrupt-"));
+  try {
+    const key = "corrupt";
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      rosterCachePath(key, { cacheDir: dir }),
+      `${JSON.stringify({ version: 1, savedAtMs: 1, agents: [{ id: "", name: 42 }] })}\n`,
+      { mode: 0o600 },
+    );
+    assert.equal(readRosterCache(key, { cacheDir: dir }), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("writeRosterCache returns false instead of throwing on disk failure", () => {
   const ok = writeRosterCache("x", SAMPLE, {
     cacheDir: "/tmp",
