@@ -9,3 +9,9 @@ host-secrets.json
 .DS_Store
 coverage/
 agent-tools/
+
+# AGENTS.local.md is the private, per-working-copy overlay — never committed.
+AGENTS.local.md
+
+# HANDOFF.md is the live working-state doc, private by default.
+HANDOFF.md

@@ -3,7 +3,7 @@ import { isCtrlKey } from "./keys.js";
 export const MIN_COMPOSE_INNER = 1;
 export const MAX_COMPOSE_INNER = 5;
 
-export const FOOTER_HINT = "Enter send  ·  Esc cancel wait  ·  Ctrl+c quit";
+export const FOOTER_HINT = "Enter send  ·  Esc lobby  ·  Ctrl+c quit";
 
 export function clampCaret(caret: number, length: number): number {
   if (!Number.isFinite(caret) || caret <= 0) return 0;
