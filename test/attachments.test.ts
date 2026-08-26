@@ -166,3 +166,38 @@ test("existing local path is left alone", async () => {
   assert.equal(calls, 0);
   assert.equal(turns[0]?.images?.[0]?.path, file);
 });
+
+test("hydrateTurnImages coalesces concurrent fetches for the same cache key", async () => {
+  resetAttachmentCacheForTests();
+  const cache = mkdtempSync(join(tmpdir(), "grok-tui-coalesce-"));
+  let calls = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const image = {
+    alt: "same.png",
+    fileName: "same.png",
+    file_path: "/home/box/sand-data/same.png",
+    id: "same-id",
+  };
+  const turns: ChatTurn[] = [
+    { id: "a", role: "user", speaker: "you", text: "", images: [image] },
+    { id: "b", role: "user", speaker: "you", text: "", images: [{ ...image }] },
+  ];
+  const pending = hydrateTurnImages("bot", turns, {
+    cacheDir: cache,
+    call: async () => {
+      calls += 1;
+      await gate;
+      return { dataUrl: TINY_DATA_URL, width: 1, height: 1 };
+    },
+  });
+  await Promise.resolve();
+  assert.equal(calls, 1, "second image shares the in-flight path resolve");
+  release();
+  const out = await pending;
+  assert.equal(calls, 1);
+  assert.ok(out[0]?.images?.[0]?.path);
+  assert.equal(out[0]?.images?.[0]?.path, out[1]?.images?.[0]?.path);
+});

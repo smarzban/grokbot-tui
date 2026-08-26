@@ -65,12 +65,24 @@ test("readRosterCache returns undefined for missing or corrupt files", () => {
   }
 });
 
-test("writeRosterCache skips empty rosters", () => {
+test("writeRosterCache persists an empty roster so a stale cache is cleared", () => {
   const dir = mkdtempSync(join(tmpdir(), "grok-tui-roster-empty-"));
   try {
+    writeRosterCache("empty", SAMPLE, { cacheDir: dir });
+    assert.equal(readRosterCache("empty", { cacheDir: dir })?.length, 2);
     writeRosterCache("empty", [], { cacheDir: dir });
-    assert.equal(readRosterCache("empty", { cacheDir: dir }), undefined);
+    assert.deepEqual(readRosterCache("empty", { cacheDir: dir }), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("writeRosterCache returns false instead of throwing on disk failure", () => {
+  const ok = writeRosterCache("x", SAMPLE, {
+    cacheDir: "/tmp",
+    mkdirSync: () => {
+      throw new Error("disk full");
+    },
+  });
+  assert.equal(ok, false);
 });

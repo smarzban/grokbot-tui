@@ -1,5 +1,5 @@
 import { Box, Text, useWindowSize } from "ink";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppConfig } from "../config.js";
 import { openHostClient } from "../client/factory.js";
 import { readRosterCache, writeRosterCache } from "../client/rosterCache.js";
@@ -73,6 +73,8 @@ export function App({ config, token, mock }: Props) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [bootNote, setBootNote] = useState("Connecting to Grok Bot host…");
   const [rosterRefreshing, setRosterRefreshing] = useState(false);
+  /** Monotonic generation so overlapping listAgents calls discard stale results. */
+  const rosterGenRef = useRef(0);
 
   const applyFreshRoster = useCallback(
     (roster: Agent[], cacheKey: string | undefined, openScreen: boolean) => {
@@ -85,7 +87,8 @@ export function App({ config, token, mock }: Props) {
       setScreen((current) => {
         if (current.name !== "chat") return current;
         const live = roster.find((agent) => agent.id === current.agent.id);
-        return live ? { name: "chat", agent: live } : current;
+        // Agent gone from the host — leave chat rather than keep a dead id.
+        return live ? { name: "chat", agent: live } : { name: "picker" };
       });
     },
     [config.defaultAgent],
@@ -96,11 +99,14 @@ export function App({ config, token, mock }: Props) {
       host: HostClient,
       options: { openScreen: boolean; showRefreshing: boolean; silent: boolean },
     ) => {
+      const gen = ++rosterGenRef.current;
       if (options.showRefreshing) setRosterRefreshing(true);
       try {
         const roster = await host.listAgents();
+        if (gen !== rosterGenRef.current) return;
         applyFreshRoster(roster, host.rosterCacheKey, options.openScreen);
       } catch (err) {
+        if (gen !== rosterGenRef.current) return;
         if (!options.silent) {
           const kind = err instanceof HostClientError ? err.kind : "unknown";
           setScreen({
@@ -111,13 +117,16 @@ export function App({ config, token, mock }: Props) {
         }
         // Stale cache stays on screen; a failed silent refresh is not an error overlay.
       } finally {
-        if (options.showRefreshing) setRosterRefreshing(false);
+        if (options.showRefreshing && gen === rosterGenRef.current) {
+          setRosterRefreshing(false);
+        }
       }
     },
     [applyFreshRoster, token],
   );
 
   const boot = useCallback(async () => {
+    rosterGenRef.current += 1;
     setScreen({ name: "boot" });
     setBootNote("Connecting to Grok Bot host…");
     setRosterRefreshing(false);
@@ -125,7 +134,7 @@ export function App({ config, token, mock }: Props) {
       const next = await openHostClient({ config, token, mock });
       setClient(next);
       const cached = next.rosterCacheKey ? readRosterCache(next.rosterCacheKey) : undefined;
-      if (cached) {
+      if (cached !== undefined) {
         enterAfterRoster(cached, config.defaultAgent, setAgents, setScreen);
         void fetchRoster(next, { openScreen: false, showRefreshing: true, silent: true });
         return;

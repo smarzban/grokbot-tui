@@ -3,7 +3,7 @@
  * before the slow gateway round-trip finishes. Never stores tokens.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { trimGatewayUrl } from "./http.js";
@@ -18,6 +18,7 @@ export type RosterCacheIo = {
   writeFileSync?: (path: string, data: string, options: { mode: number }) => void;
   mkdirSync?: (path: string, options: { recursive: boolean; mode: number }) => void;
   existsSync?: (path: string) => boolean;
+  unlinkSync?: (path: string) => void;
 };
 
 type CacheFile = {
@@ -75,6 +76,10 @@ export function rosterCachePath(key: string, io: RosterCacheIo = {}): string {
   return join(rosterCacheDir(io), `roster-${key}.json`);
 }
 
+/**
+ * Last successful roster for this gateway key.
+ * `undefined` = miss/corrupt. Empty array = host had no agents (clears stale cache).
+ */
 export function readRosterCache(key: string, io: RosterCacheIo = {}): Agent[] | undefined {
   const path = rosterCachePath(key, io);
   const exists = io.existsSync ?? existsSync;
@@ -88,29 +93,49 @@ export function readRosterCache(key: string, io: RosterCacheIo = {}): Agent[] | 
       const agent = asCachedAgent(row);
       if (agent) agents.push(agent);
     }
-    return agents.length > 0 ? agents : undefined;
+    return agents;
   } catch {
     return undefined;
   }
 }
 
-export function writeRosterCache(key: string, agents: Agent[], io: RosterCacheIo = {}): void {
-  if (agents.length === 0) return;
-  const dir = rosterCacheDir(io);
-  const mkdir = io.mkdirSync ?? mkdirSync;
-  mkdir(dir, { recursive: true, mode: 0o700 });
-  const payload: CacheFile = {
-    version: VERSION,
-    savedAtMs: Date.now(),
-    agents: agents.map((agent) => ({
-      id: agent.id,
-      name: agent.name,
-      isGroup: agent.isGroup,
-      ...(agent.title ? { title: agent.title } : {}),
-      ...(agent.memberIds?.length ? { memberIds: agent.memberIds } : {}),
-      ...(agent.members?.length ? { members: agent.members } : {}),
-    })),
-  };
-  const write = io.writeFileSync ?? writeFileSync;
-  write(rosterCachePath(key, io), `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+/**
+ * Persist a roster (including empty). Never throws — disk failures must not
+ * look like a gateway error to the caller.
+ */
+export function writeRosterCache(key: string, agents: Agent[], io: RosterCacheIo = {}): boolean {
+  try {
+    const dir = rosterCacheDir(io);
+    const mkdir = io.mkdirSync ?? mkdirSync;
+    mkdir(dir, { recursive: true, mode: 0o700 });
+    const payload: CacheFile = {
+      version: VERSION,
+      savedAtMs: Date.now(),
+      // Empty array clears a stale non-empty cache after the host removed everyone.
+      agents: agents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        isGroup: agent.isGroup,
+        ...(agent.title ? { title: agent.title } : {}),
+        ...(agent.memberIds?.length ? { memberIds: agent.memberIds } : {}),
+        ...(agent.members?.length ? { members: agent.members } : {}),
+      })),
+    };
+    const write = io.writeFileSync ?? writeFileSync;
+    write(rosterCachePath(key, io), `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Optional cleanup helper for tests. */
+export function clearRosterCache(key: string, io: RosterCacheIo = {}): void {
+  const path = rosterCachePath(key, io);
+  try {
+    const unlink = io.unlinkSync ?? unlinkSync;
+    unlink(path);
+  } catch {
+    // ignore
+  }
 }

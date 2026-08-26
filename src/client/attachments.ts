@@ -30,15 +30,38 @@ export async function fetchBytesWithHeaders(
 
 const memory = new Map<string, string>();
 const failed = new Set<string>();
+/** In-flight path resolution keyed by attachmentCacheKey — coalesce concurrent hydrates. */
+const inflightPaths = new Map<string, Promise<string | undefined>>();
+
+/** Cap concurrent gateway/HTTPS attachment fetches across a transcript hydrate. */
+export const HYDRATE_CONCURRENCY = 4;
 
 export function resetAttachmentCacheForTests(): void {
   memory.clear();
   failed.clear();
+  inflightPaths.clear();
   try {
     rmSync(join(tmpdir(), "grok-tui-images"), { recursive: true, force: true });
   } catch {
     // ignore missing or busy cache dir
   }
+}
+
+async function mapPool<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  if (items.length === 0) return [];
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      while (next < items.length) {
+        const i = next;
+        next += 1;
+        out[i] = await fn(items[i]!);
+      }
+    }),
+  );
+  return out;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -253,6 +276,27 @@ async function tryHttpsUrl(image: ChatImage, io: AttachmentIo, key: string): Pro
   return undefined;
 }
 
+async function resolveAttachmentPath(
+  agentId: string,
+  image: ChatImage,
+  io: AttachmentIo,
+  key: string,
+): Promise<string | undefined> {
+  const pending = inflightPaths.get(key);
+  if (pending) return pending;
+  const work = (async (): Promise<string | undefined> => {
+    try {
+      const fromHost = await tryGateway(image, io, key);
+      if (fromHost) return fromHost;
+      return await tryHttpsUrl(image, io, key);
+    } finally {
+      inflightPaths.delete(key);
+    }
+  })();
+  inflightPaths.set(key, work);
+  return work;
+}
+
 async function hydrateOne(agentId: string, image: ChatImage, io: AttachmentIo): Promise<ChatImage> {
   if (image.path) {
     try {
@@ -271,11 +315,8 @@ async function hydrateOne(agentId: string, image: ChatImage, io: AttachmentIo): 
   }
   if (failed.has(key)) return image;
 
-  const fromHost = await tryGateway(image, io, key);
-  if (fromHost) return { ...image, path: fromHost };
-
-  const fromUrl = await tryHttpsUrl(image, io, key);
-  if (fromUrl) return { ...image, path: fromUrl };
+  const path = await resolveAttachmentPath(agentId, image, io, key);
+  if (path) return { ...image, path };
 
   failed.add(key);
   return image;
@@ -286,13 +327,29 @@ export async function hydrateTurnImages(
   agentId: string,
   turns: ChatTurn[],
   io: AttachmentIo,
+  concurrency = HYDRATE_CONCURRENCY,
 ): Promise<ChatTurn[]> {
-  return Promise.all(
-    turns.map(async (turn) => {
-      const images = turn.images;
-      if (!images || images.length === 0) return turn;
-      const next = await Promise.all(images.map((image) => hydrateOne(agentId, image, io)));
-      return { ...turn, images: next };
-    }),
-  );
+  type Job = { turnIndex: number; imageIndex: number; image: ChatImage };
+  const jobs: Job[] = [];
+  for (let turnIndex = 0; turnIndex < turns.length; turnIndex++) {
+    const images = turns[turnIndex]?.images;
+    if (!images) continue;
+    for (let imageIndex = 0; imageIndex < images.length; imageIndex++) {
+      jobs.push({ turnIndex, imageIndex, image: images[imageIndex]! });
+    }
+  }
+  if (jobs.length === 0) return turns;
+
+  const hydrated = await mapPool(jobs, concurrency, (job) => hydrateOne(agentId, job.image, io));
+  const nextImages = turns.map((turn) => (turn.images ? turn.images.slice() : undefined));
+  for (let i = 0; i < jobs.length; i++) {
+    const job = jobs[i]!;
+    const images = nextImages[job.turnIndex];
+    if (images) images[job.imageIndex] = hydrated[i]!;
+  }
+  return turns.map((turn, turnIndex) => {
+    const images = nextImages[turnIndex];
+    if (!images) return turn;
+    return { ...turn, images };
+  });
 }

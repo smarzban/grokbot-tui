@@ -22,13 +22,17 @@ function termSize(columns: number, rows: number): { width: number; height: numbe
 export function Picker({ agents, refreshing = false, onSelect, onRefresh }: Props) {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
-  const [index, setIndex] = useState(0);
+  /** Anchor selection by agent id so roster refresh does not shift Enter's target. */
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const { width, height } = termSize(columns, rows);
   const listHeight = Math.max(3, height - 6);
   const innerList = Math.max(1, listHeight - 2);
   const inner = innerWidth(width);
   const items = pickerItems(agents);
   const allRows = pickerRows(agents);
+  const indexFromId = selectedId ? items.findIndex((agent) => agent.id === selectedId) : -1;
+  const safeIndex = items.length === 0 ? 0 : indexFromId >= 0 ? indexFromId : 0;
+  const selected = items[safeIndex];
 
   useInput((input, key) => {
     if (isCtrlKey(input, key, "c")) {
@@ -45,21 +49,20 @@ export function Picker({ agents, refreshing = false, onSelect, onRefresh }: Prop
     }
     if (items.length === 0) return;
     if (key.upArrow || input === "k" || isCtrlKey(input, key, "p")) {
-      setIndex((current) => (current <= 0 ? items.length - 1 : current - 1));
+      const next = safeIndex <= 0 ? items.length - 1 : safeIndex - 1;
+      setSelectedId(items[next]?.id);
       return;
     }
     if (key.downArrow || input === "j" || isCtrlKey(input, key, "n")) {
-      setIndex((current) => (current >= items.length - 1 ? 0 : current + 1));
+      const next = safeIndex >= items.length - 1 ? 0 : safeIndex + 1;
+      setSelectedId(items[next]?.id);
       return;
     }
     if (key.return || input === "\r" || input === "\n") {
-      const agent = items[Math.min(index, items.length - 1)];
-      if (agent) onSelect(agent);
+      if (selected) onSelect(selected);
     }
   });
 
-  const safeIndex = items.length === 0 ? 0 : Math.min(index, items.length - 1);
-  const selected = items[safeIndex];
   const visible = visiblePickerRows(allRows, selected?.id, innerList);
 
   return (
