@@ -97,8 +97,6 @@ GROKBOT_GATEWAY_URL=http://<tailscale-or-localhost-tunnel>:1340
 GROKBOT_GATEWAY_TOKEN=...
 ```
 
-Legacy names (`SAND_GATEWAY_*`, `GROK_BOT_GATEWAY_*`, `SAND_HOST_PORT`) still work but log a one-time deprecation warning.
-
 Optional: `GROK_TUI_DEFAULT_AGENT=Ada` to open that seat on launch.
 
 ### From a laptop with the Grok Bot desktop app (macOS)
@@ -118,7 +116,7 @@ See `.env.example`. Never print, log, or commit `GROKBOT_GATEWAY_TOKEN` or the d
 | `GROKBOT_GATEWAY_PORT` | Localhost port when a token is set without a URL (default 1340) |
 | `GROK_TUI_DEFAULT_AGENT` | Optional name or id to open first |
 | `GROK_TUI_MOCK=1` | Force the in-process mock host |
-| `GROK_TUI_WAIT_TIMEOUT_MS` | Max wait for a 1:1 reply (default 600000; Esc cancels earlier) |
+| `GROK_TUI_WAIT_TIMEOUT_MS` | Max wait for a 1:1 reply (default 600000; `0` = until Esc; Esc always cancels) |
 | `GROK_TUI_POLL_MS` | Idle transcript poll interval (default 1500; minimum 250) |
 
 ## Tests
@@ -128,7 +126,7 @@ npm test
 npm run typecheck
 ```
 
-Behavioral tests cover the mock host, scripted `fetch` for the owned POST helper, desktop descriptor decrypt (injected Keychain), layout/compose/keys/mouse helpers, poll/roster logic, config env resolution, and the extracted chat poll snapshot used by `Chat`. Full Ink screen renders are not exercised in CI yet.
+Tests cover helpers and injected HTTP: mock host, scripted gateway `fetch`, desktop Keychain decrypt, layout/compose/keys/mouse, poll/roster, config, and the chat poll snapshot. The picker roster is refreshed from Chat via `onRoster` while chatting; Esc returns to that live list. Full Ink screen renders are not exercised in CI yet.
 
 This environment usually cannot talk to a real Grok Bot host. Use `--mock` to exercise the TUI; point `.env` at your host to chat for real.
 

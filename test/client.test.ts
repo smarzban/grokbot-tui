@@ -297,6 +297,19 @@ test("gateway client abort during a hung sendPrompt POST interrupts once", async
   assert.equal(interruptCalls, 1);
 });
 
+test("gateway client sendPrompt times out when the host never replies", async () => {
+  const host = createScriptedHost({ silentSend: true });
+  const client = clientFor(host);
+  const result = await client.sendPrompt({
+    agentId: ADA_ID,
+    prompt: "no reply",
+    wait: true,
+    timeoutMs: 80,
+  });
+  assert.equal(result.status, "timeout");
+  assert.equal(result.accepted, true);
+});
+
 test("gateway client maps a down host", async () => {
   const host = createScriptedHost({ down: true });
   const client = clientFor(host);

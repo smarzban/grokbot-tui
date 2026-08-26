@@ -12,6 +12,8 @@ export type ScriptedHost = {
   token: string;
   down?: boolean;
   rejectAuth?: boolean;
+  /** When true, sendPrompt records the user turn but never appends an assistant reply. */
+  silentSend?: boolean;
   agents: ScriptedAgent[];
   transcripts: Map<string, unknown[]>;
   busyPollsRemaining: Map<string, number>;
@@ -34,6 +36,7 @@ export function createScriptedHost(overrides: Partial<ScriptedHost> = {}): Scrip
     busyPollsRemaining: overrides.busyPollsRemaining ?? new Map(),
     ...(overrides.down != null ? { down: overrides.down } : {}),
     ...(overrides.rejectAuth != null ? { rejectAuth: overrides.rejectAuth } : {}),
+    ...(overrides.silentSend != null ? { silentSend: overrides.silentSend } : {}),
   };
 }
 
@@ -97,15 +100,17 @@ export function createScriptedFetch(host: ScriptedHost): typeof fetch {
       if (!agent) return json(404, { error: "unknown agent" });
       const entries = host.transcripts.get(agent.id) ?? [];
       entries.push({ kind: "message", role: "user", content: prompt, timestampMs: Date.now() });
-      entries.push({
-        kind: "message",
-        role: "assistant",
-        content: `Ada reply: ${prompt}`,
-        timestampMs: Date.now(),
-      });
+      if (!host.silentSend) {
+        entries.push({
+          kind: "message",
+          role: "assistant",
+          content: `Ada reply: ${prompt}`,
+          timestampMs: Date.now(),
+        });
+        host.busyPollsRemaining.set(agent.id, 1);
+        agent.isRunning = true;
+      }
       host.transcripts.set(agent.id, entries);
-      host.busyPollsRemaining.set(agent.id, 1);
-      agent.isRunning = true;
       return json(200, { accepted: true });
     }
 

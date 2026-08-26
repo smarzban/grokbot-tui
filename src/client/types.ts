@@ -21,6 +21,13 @@ export type Agent = {
 
 export const DEFAULT_TRANSCRIPT_LIMIT = 500;
 
+/**
+ * Image on a chat turn. Fields fill in stages:
+ * 1. Wire — host `file_path` / `url` / `fileName` / alt (may be box paths missing on Mac)
+ * 2. Local — `path` set after hydrate or a pasted disk file Kitty can paint
+ * 3. Placeholder — alt/fileName only when no bytes are available
+ * Keep optional fields; do not invent a parallel type per stage until room UX needs it.
+ */
 export type ChatImage = {
   /** Filename or alt shown in the TUI. Never a token-bearing URL. */
   alt?: string;
@@ -65,9 +72,11 @@ export type ChatTurn = {
 export type SendStatus = "idle" | "timeout" | "cancelled";
 
 export type SendResult = {
+  /** Host `accepted` on sendPrompt (defaults true when omitted). */
   accepted: boolean;
   status: SendStatus;
   reply?: string;
+  /** Wall time for the send+wait call; unused by the TUI today. */
   elapsedMs: number;
 };
 
