@@ -75,6 +75,8 @@ export function App({ config, token, mock }: Props) {
   const [rosterRefreshing, setRosterRefreshing] = useState(false);
   /** Monotonic generation so overlapping listAgents calls discard stale results. */
   const rosterGenRef = useRef(0);
+  const screenRef = useRef<Screen>(screen);
+  screenRef.current = screen;
 
   const applyFreshRoster = useCallback(
     (roster: Agent[], cacheKey: string | undefined, openScreen: boolean) => {
@@ -86,7 +88,7 @@ export function App({ config, token, mock }: Props) {
       setAgents(roster);
       setScreen((current) => {
         if (current.name !== "chat") return current;
-        if (roster.length === 0) return current;
+        if (roster.length === 0) return { name: "picker" };
         const live = roster.find((agent) => agent.id === current.agent.id);
         // Agent gone from the host — leave chat rather than keep a dead id.
         return live ? { name: "chat", agent: live } : { name: "picker" };
@@ -105,8 +107,16 @@ export function App({ config, token, mock }: Props) {
       try {
         const roster = await host.listAgents();
         if (gen !== rosterGenRef.current) return;
-        // A transient empty response during silent refresh must not wipe cache or eject chat.
-        if (roster.length === 0 && options.silent && !options.openScreen) return;
+        // Transient empty during silent refresh: ignore only while in chat.
+        // On the picker, apply [] so cache and UI reflect a genuinely empty host.
+        if (
+          roster.length === 0 &&
+          options.silent &&
+          !options.openScreen &&
+          screenRef.current.name === "chat"
+        ) {
+          return;
+        }
         applyFreshRoster(roster, host.rosterCacheKey, options.openScreen);
       } catch (err) {
         if (gen !== rosterGenRef.current) return;

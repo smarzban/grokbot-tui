@@ -1,5 +1,5 @@
 import { Box, Text, useApp, useInput, useWindowSize } from "ink";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Agent } from "../client/types.js";
 import { isCtrlKey } from "./keys.js";
 import { agentLabel, innerWidth } from "./layout.js";
@@ -24,6 +24,7 @@ export function Picker({ agents, refreshing = false, onSelect, onRefresh }: Prop
   const { columns, rows } = useWindowSize();
   /** Anchor selection by agent id so roster refresh does not shift Enter's target. */
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const lastIndexRef = useRef(0);
   const { width, height } = termSize(columns, rows);
   const listHeight = Math.max(3, height - 6);
   const innerList = Math.max(1, listHeight - 2);
@@ -31,7 +32,13 @@ export function Picker({ agents, refreshing = false, onSelect, onRefresh }: Prop
   const items = pickerItems(agents);
   const allRows = pickerRows(agents);
   const indexFromId = selectedId ? items.findIndex((agent) => agent.id === selectedId) : -1;
-  const safeIndex = items.length === 0 ? 0 : indexFromId >= 0 ? indexFromId : 0;
+  const safeIndex =
+    items.length === 0
+      ? 0
+      : indexFromId >= 0
+        ? indexFromId
+        : Math.min(lastIndexRef.current, items.length - 1);
+  lastIndexRef.current = safeIndex;
   const selected = items[safeIndex];
 
   useInput((input, key) => {
