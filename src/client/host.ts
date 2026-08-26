@@ -4,6 +4,7 @@ import { redact } from "../redact.js";
 import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
 import { isNotFoundError, mapHostError } from "./errors.js";
 import { gatewayPost, trimGatewayUrl, type GatewaySession } from "./http.js";
+import { rosterCacheKey } from "./rosterCache.js";
 import {
   asAgentRow,
   assistantCount,
@@ -52,6 +53,7 @@ function mapSessionError(err: unknown, session: GatewaySession): HostClientError
  */
 export class HttpHostClient implements HostClient {
   readonly source: HostSource;
+  readonly rosterCacheKey: string;
   readonly #session: GatewaySession;
   readonly #fetch?: typeof fetch;
 
@@ -62,6 +64,7 @@ export class HttpHostClient implements HostClient {
       token: options.token,
       headers: options.headers ?? {},
     };
+    this.rosterCacheKey = rosterCacheKey(this.#session.gatewayUrl);
     this.#fetch = options.fetch;
   }
 

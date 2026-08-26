@@ -287,18 +287,12 @@ export async function hydrateTurnImages(
   turns: ChatTurn[],
   io: AttachmentIo,
 ): Promise<ChatTurn[]> {
-  const out: ChatTurn[] = [];
-  for (const turn of turns) {
-    const images = turn.images;
-    if (!images || images.length === 0) {
-      out.push(turn);
-      continue;
-    }
-    const next: ChatImage[] = [];
-    for (const image of images) {
-      next.push(await hydrateOne(agentId, image, io));
-    }
-    out.push({ ...turn, images: next });
-  }
-  return out;
+  return Promise.all(
+    turns.map(async (turn) => {
+      const images = turn.images;
+      if (!images || images.length === 0) return turn;
+      const next = await Promise.all(images.map((image) => hydrateOne(agentId, image, io)));
+      return { ...turn, images: next };
+    }),
+  );
 }

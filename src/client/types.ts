@@ -94,6 +94,11 @@ export type SendPromptInput = {
  */
 export interface HostClient {
   readonly source: HostSource;
+  /**
+   * Stable key for the on-disk roster cache (hash of gateway URL).
+   * Absent for mock / hosts with no durable identity.
+   */
+  readonly rosterCacheKey?: string;
   listAgents(): Promise<Agent[]>;
   getTranscript(agentId: string, limit?: number): Promise<ChatTurn[]>;
   sendPrompt(input: SendPromptInput): Promise<SendResult>;

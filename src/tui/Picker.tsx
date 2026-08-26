@@ -7,6 +7,7 @@ import { pickerItems, pickerRows, visiblePickerRows } from "./roster.js";
 
 type Props = {
   agents: Agent[];
+  refreshing?: boolean;
   onSelect: (agent: Agent) => void;
   onRefresh: () => void;
 };
@@ -18,7 +19,7 @@ function termSize(columns: number, rows: number): { width: number; height: numbe
   };
 }
 
-export function Picker({ agents, onSelect, onRefresh }: Props) {
+export function Picker({ agents, refreshing = false, onSelect, onRefresh }: Props) {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
   const [index, setIndex] = useState(0);
@@ -102,7 +103,11 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
         )}
       </Box>
       <Box borderStyle="round" borderColor="gray" paddingX={1} height={3} overflow="hidden">
-        <Text dimColor>↑↓ / j k move  ·  Enter open  ·  r refresh  ·  q quit</Text>
+        <Text dimColor>
+          {refreshing
+            ? "Refreshing roster…"
+            : "↑↓ / j k move  ·  Enter open  ·  r refresh  ·  q quit"}
+        </Text>
       </Box>
     </Box>
   );
