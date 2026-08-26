@@ -9,6 +9,8 @@ import {
   gapAfterTurn,
   MESSAGE_WRAP_RATIO,
   speakerLabel,
+  speakerColor,
+  SPEAKER_COLORS,
   TRANSCRIPT_JUSTIFY,
   TRANSCRIPT_PAD_BOTTOM,
   transcriptInnerHeight,
@@ -322,7 +324,7 @@ test("layout has no bubble chrome on turns; 1:1 uses two empties, rooms one", ()
   );
   assert.deepEqual(
     room.map((row) => row.kind),
-    ["speaker", "body", "empty", "speaker", "body"],
+    ["body", "empty", "speaker", "body"],
   );
 });
 
@@ -448,7 +450,7 @@ test("idle transcript has a single bottom pad, not a trailing empty row", () => 
   assert.equal(idle.filter((row) => row.kind === "empty").length, 2);
 });
 
-test("1:1 rows have no speaker labels; rooms still do", () => {
+test("1:1 rows have no speaker labels; channels label members only", () => {
   const oneToOne = turnsToRows(
     [
       { id: "1", role: "user", speaker: "you", text: "hi" },
@@ -482,11 +484,15 @@ test("1:1 rows have no speaker labels; rooms still do", () => {
   );
   assert.deepEqual(
     room.filter((row) => row.kind === "speaker").map((row) => row.text.trim()),
-    ["you", "Dev"],
+    ["Dev"],
+  );
+  assert.equal(
+    room.some((row) => row.kind === "speaker" && row.text.trim() === "you"),
+    false,
   );
 });
 
-test("room turns are labeled with member names, not the room title", () => {
+test("channel turns are labeled with member names, not the channel title or you", () => {
   const ctx = {
     agentName: "project X",
     isGroup: true,
@@ -502,7 +508,7 @@ test("room turns are labeled with member names, not the room title", () => {
   ];
   const rows = turnsToRows(turns, 40, ctx);
   const speakers = rows.filter((row) => row.kind === "speaker").map((row) => row.text.trim());
-  assert.deepEqual(speakers, ["you", "Dev", "Chief of Staff"]);
+  assert.deepEqual(speakers, ["Dev", "Chief of Staff"]);
   assert.equal(
     rows.some((row) => row.kind === "speaker" && row.text.includes("project X")),
     false,
@@ -510,4 +516,12 @@ test("room turns are labeled with member names, not the room title", () => {
   assert.equal(speakerLabel(turns[1]!, ctx), "Dev");
   assert.equal(speakerLabel(turns[2]!, ctx), "Chief of Staff");
   assert.equal(speakerLabel(turns[0]!, ctx), "you");
+});
+
+test("speakerColor is stable per name and differs across common members", () => {
+  assert.equal(speakerColor("Dev"), speakerColor("Dev"));
+  assert.equal(speakerColor("  Dev "), speakerColor("dev"));
+  assert.ok(SPEAKER_COLORS.includes(speakerColor("Dev")));
+  assert.ok(SPEAKER_COLORS.includes(speakerColor("Chief of Staff")));
+  assert.notEqual(speakerColor("Dev"), speakerColor("Chief of Staff"));
 });
