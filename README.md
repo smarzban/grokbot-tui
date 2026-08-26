@@ -6,11 +6,7 @@ This is not an official xAI or Cursor product. There is no public Grok Bot chat 
 
 ## Screenshots
 
-**Lobby** — pick a bot or channel:
-
 ![Lobby — pick a bot or channel](docs/screenshots/lobby.png)
-
-**Chat** — scroll history, wait for replies, and draw images in Ghostty:
 
 ![Chat with Signal](docs/screenshots/chat.png)
 
@@ -19,6 +15,8 @@ This is not an official xAI or Cursor product. There is no public Grok Bot chat 
 - Node.js 22 or newer
 - An interactive terminal (TTY)
 - Ghostty if you want host images drawn with Kitty graphics (other terminals show placeholders)
+
+
 
 ## Install
 
@@ -42,6 +40,8 @@ npm install
 cp .env.example .env
 npm start
 ```
+
+
 
 ## Try it without a host
 
@@ -74,6 +74,8 @@ GROKBOT_GATEWAY_URL=http://127.0.0.1:1340
 GROKBOT_GATEWAY_TOKEN=...
 ```
 
+
+
 ### Laptop over Tailscale or SSH tunnel
 
 ```sh
@@ -92,7 +94,7 @@ Connectivity check is `listAgents`. There is no separate health probe.
 - In a 1:1 chat, wait for the reply (default wait cap is 10 minutes; Esc cancels the wait and asks the host to interrupt when supported)
 - In a channel, send without blocking; idle poll picks up each member's turn and "X is answering…" when a member is running
 - Scroll history with PageUp / PageDown, the wheel, Home / End, and Ctrl+u / Ctrl+d
-- Mention channel members with `@` plus a prefix; Tab or Enter inserts `@Name `
+- Mention channel members with `@` plus a prefix; Tab or Enter inserts `@Name` 
 - Paste a local image path as the message text to draw it in Ghostty
 - Leave chat for the lobby with Esc (when not waiting) or Ctrl+b
 
@@ -100,22 +102,24 @@ Out of scope in v1: creating or deleting agents or channels, seating members, st
 
 ## Keys
 
-| Key | Where | Action |
-| --- | --- | --- |
-| ↑ ↓ / j k, Enter | lobby | Move / open |
-| r | lobby / error | Refresh roster / retry connect |
-| q | lobby / error | Quit |
-| Esc | chat (idle) | Open the lobby |
-| Esc | chat (waiting) | Cancel the wait and interrupt the host run when supported |
-| Esc | mention menu | Close the menu (stay in the channel) |
-| Ctrl+b | chat | Open the lobby (cancels a wait first if one is in flight) |
-| Enter | chat compose | Send |
-| Shift+Enter / Ctrl+J | chat compose | Newline |
-| ← → / Ctrl+a / Ctrl+e | chat compose | Move caret (Ctrl+a/e = whole draft). Cmd+← / Cmd+→ = current visual line |
-| Cmd+Delete / Cmd+Backspace | chat compose | Clear the draft |
-| PgUp / PgDn / wheel / Home / End / Ctrl+u / Ctrl+d | chat | Scroll history. ↑ ↓ scroll only while the draft is a single line |
-| Tab / Enter / ↑ ↓ | mention menu | Complete or move |
-| Ctrl+c | anywhere | Quit |
+
+| Key                                                | Where          | Action                                                                   |
+| -------------------------------------------------- | -------------- | ------------------------------------------------------------------------ |
+| ↑ ↓ / j k, Enter                                   | lobby          | Move / open                                                              |
+| r                                                  | lobby / error  | Refresh roster / retry connect                                           |
+| q                                                  | lobby / error  | Quit                                                                     |
+| Esc                                                | chat (idle)    | Open the lobby                                                           |
+| Esc                                                | chat (waiting) | Cancel the wait and interrupt the host run when supported                |
+| Esc                                                | mention menu   | Close the menu (stay in the channel)                                     |
+| Ctrl+b                                             | chat           | Open the lobby (cancels a wait first if one is in flight)                |
+| Enter                                              | chat compose   | Send                                                                     |
+| Shift+Enter / Ctrl+J                               | chat compose   | Newline                                                                  |
+| ← → / Ctrl+a / Ctrl+e                              | chat compose   | Move caret (Ctrl+a/e = whole draft). Cmd+← / Cmd+→ = current visual line |
+| Cmd+Delete / Cmd+Backspace                         | chat compose   | Clear the draft                                                          |
+| PgUp / PgDn / wheel / Home / End / Ctrl+u / Ctrl+d | chat           | Scroll history. ↑ ↓ scroll only while the draft is a single line         |
+| Tab / Enter / ↑ ↓                                  | mention menu   | Complete or move                                                         |
+| Ctrl+c                                             | anywhere       | Quit                                                                     |
+
 
 Footer in chat: `Enter send  ·  Esc lobby  ·  Ctrl+c quit`.
 
@@ -123,15 +127,19 @@ Footer in chat: `Enter send  ·  Esc lobby  ·  Ctrl+c quit`.
 
 See `.env.example`. Never print, log, or commit `GROKBOT_GATEWAY_TOKEN` or the desktop session payload. Only these names are read (legacy `SAND_*` / `GROK_BOT_*` names are ignored).
 
-| Variable | Purpose |
-| --- | --- |
-| `GROKBOT_GATEWAY_URL` | Gateway origin. Keep any path; only a trailing slash is trimmed |
-| `GROKBOT_GATEWAY_TOKEN` | Gateway token |
-| `GROKBOT_GATEWAY_PORT` | Localhost port when a token is set without a URL (default `1340`) |
-| `GROK_TUI_DEFAULT_AGENT` | Bot or channel name/id to open first |
-| `GROK_TUI_MOCK=1` | Force the in-process mock host |
+
+| Variable                   | Purpose                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GROKBOT_GATEWAY_URL`      | Gateway origin. Keep any path; only a trailing slash is trimmed                                  |
+| `GROKBOT_GATEWAY_TOKEN`    | Gateway token                                                                                    |
+| `GROKBOT_GATEWAY_PORT`     | Localhost port when a token is set without a URL (default `1340`)                                |
+| `GROK_TUI_DEFAULT_AGENT`   | Bot or channel name/id to open first                                                             |
+| `GROK_TUI_MOCK=1`          | Force the in-process mock host                                                                   |
 | `GROK_TUI_WAIT_TIMEOUT_MS` | 1:1 wait cap in ms (default `600000`). Exact `0` waits until Esc. Invalid values use the default |
-| `GROK_TUI_POLL_MS` | Idle transcript poll interval (default `1500`, minimum `250`) |
+| `GROK_TUI_POLL_MS`         | Idle transcript poll interval (default `1500`, minimum `250`)                                    |
+
+
+
 
 ## Images
 
@@ -146,14 +154,18 @@ Ghostty speaks the Kitty graphics protocol. You do not need `viu`, `chafa`, or a
 
 ## Troubleshooting
 
-| Symptom | What to try |
-| --- | --- |
-| "Missing gateway token" | Set `GROKBOT_GATEWAY_TOKEN` in `.env`, or open the Grok Bot desktop app and Allow Keychain access |
-| "Gateway rejected the token" | Refresh the token or re-sign into the desktop app. Do not paste the token into chat |
-| "Grok Bot host is down" | Start the host, check the tunnel URL, or run `--mock` |
-| Lobby is empty after a blip | Press `r` on the lobby or error screen to refresh |
-| Esc does not leave chat | If the header shows waiting/sent, Esc cancels the wait first. Press Esc again for the lobby, or use Ctrl+b |
-| Images stay as `[image] …` | Use Ghostty, keep the full picture block on screen, and confirm the host can serve `readAttachmentImage` |
+
+| Symptom                      | What to try                                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| "Missing gateway token"      | Set `GROKBOT_GATEWAY_TOKEN` in `.env`, or open the Grok Bot desktop app and Allow Keychain access          |
+| "Gateway rejected the token" | Refresh the token or re-sign into the desktop app. Do not paste the token into chat                        |
+| "Grok Bot host is down"      | Start the host, check the tunnel URL, or run `--mock`                                                      |
+| Lobby is empty after a blip  | Press `r` on the lobby or error screen to refresh                                                          |
+| Esc does not leave chat      | If the header shows waiting/sent, Esc cancels the wait first. Press Esc again for the lobby, or use Ctrl+b |
+| Images stay as `[image] …`   | Use Ghostty, keep the full picture block on screen, and confirm the host can serve `readAttachmentImage`   |
+
+
+
 
 ## Security
 
@@ -161,6 +173,8 @@ Ghostty speaks the Kitty graphics protocol. You do not need `viu`, `chafa`, or a
 - Error text redacts bearer tokens and `GROKBOT_GATEWAY_TOKEN=…` fragments.
 - The TUI shows transcript text only, not raw gateway payloads.
 - Destructive host commands (`deleteAgent`, box reset, and similar) are not exposed.
+
+
 
 ## Develop from a clone
 
