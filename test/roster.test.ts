@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Agent } from "../src/client/types.js";
-import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows, answeringIndicator, busyMemberNames, busyNamesSignature } from "../src/tui/roster.ts";
+import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows, answeringIndicator, answeringMemberNames, busyMemberNames, busyNamesSignature, pendingReplyMemberNames, mentionedMemberNames } from "../src/tui/roster.ts";
+import type { ChatTurn } from "../src/client/types.js";
 
 const ada: Agent = { id: "ada", name: "Ada", isGroup: false };
 const bea: Agent = { id: "bea", name: "Bea", isGroup: false };
@@ -70,4 +71,34 @@ test("answeringIndicator names members who areRunning", () => {
   );
   assert.equal(busyNamesSignature(["Dev"]), busyNamesSignature(["Dev"]));
   assert.notEqual(busyNamesSignature(["Dev"]), busyNamesSignature(["Dev", "Chief of Staff"]));
+});
+
+test("pendingReplyMemberNames infers a 1:1 bot from the last user turn", () => {
+  const turns: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "hello" }];
+  assert.deepEqual(pendingReplyMemberNames(turns, ada, [ada]), ["Ada"]);
+  assert.deepEqual(
+    pendingReplyMemberNames([{ id: "2", role: "assistant", speaker: "Ada", text: "hi" }], ada, [ada]),
+    [],
+  );
+});
+
+test("pendingReplyMemberNames uses @mentions in rooms", () => {
+  const turns: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "@Dev status?" }];
+  assert.deepEqual(pendingReplyMemberNames(turns, room, [room]), ["Dev"]);
+  assert.deepEqual(
+    pendingReplyMemberNames([{ id: "1", role: "user", speaker: "you", text: "hello all" }], room, [room]),
+    [],
+  );
+  assert.deepEqual(mentionedMemberNames("@Chief of Staff ping", room, [room]), ["Chief of Staff"]);
+});
+
+test("answeringMemberNames follows transcript pending, not roster busy flags", () => {
+  const dev: Agent = { id: "dev", name: "Dev", isGroup: false, isRunning: true };
+  const waiting: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "@Dev go" }];
+  assert.deepEqual(answeringMemberNames(room, [dev, room], waiting), ["Dev"]);
+  const done: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "@Dev go" },
+    { id: "2", role: "assistant", speaker: "Dev", text: "on it" },
+  ];
+  assert.deepEqual(answeringMemberNames(room, [dev, room], done), []);
 });

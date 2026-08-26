@@ -66,6 +66,24 @@ test("mergePolledTranscript drops local turns once the host commits them", () =>
   assert.deepEqual(mergePolledTranscript([local], host), host);
 });
 
+test("mergePolledTranscript keeps hydrated image paths across poll ticks", () => {
+  const hydrated: ChatTurn = {
+    id: "1",
+    role: "assistant",
+    speaker: "Ada",
+    text: "photo",
+    images: [{ alt: "pic.png", path: "/tmp/grok-tui-images/abc.png", file_path: "/home/box/x" }],
+  };
+  const polled: ChatTurn = {
+    id: "1",
+    role: "assistant",
+    speaker: "Ada",
+    text: "photo",
+    images: [{ alt: "pic.png", file_path: "/home/box/x" }],
+  };
+  assert.deepEqual(mergePolledTranscript([hydrated], [polled]), [hydrated]);
+});
+
 test("parsePollMs defaults to 1500 and rejects tiny intervals", () => {
   assert.equal(parsePollMs(undefined), 1500);
   assert.equal(parsePollMs(""), 1500);

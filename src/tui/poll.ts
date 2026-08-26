@@ -33,6 +33,32 @@ function isLocalPendingTurn(turn: ChatTurn): boolean {
   return turn.id.startsWith("local-") && turn.role === "user";
 }
 
+function mergeImagePaths(from: ChatTurn[], onto: ChatTurn[]): ChatTurn[] {
+  const fromById = new Map(from.map((turn) => [turn.id, turn]));
+  return onto.map((turn, index) => {
+    const src = fromById.get(turn.id) ?? from[index];
+    if (!turn.images?.length) return turn;
+    const images = turn.images.map((image, imageIndex) => {
+      if (image.path) return image;
+      const priorPath = src?.images?.[imageIndex]?.path;
+      return priorPath ? { ...image, path: priorPath } : image;
+    });
+    return { ...turn, images };
+  });
+}
+
+/** Copy local paint paths from one transcript onto another (same ids / indices). */
+export function mergeImagePathsFrom(from: ChatTurn[], onto: ChatTurn[]): ChatTurn[] {
+  return mergeImagePaths(from, onto);
+}
+
+/** True when a turn has host image refs that still need hydrateTurnImages. */
+export function transcriptNeedsImageHydrate(turns: ChatTurn[]): boolean {
+  return turns.some((turn) =>
+    (turn.images ?? []).some((image) => !image.path && Boolean(image.file_path || image.url)),
+  );
+}
+
 /** Apply a polled host tail while keeping uncommitted optimistic user turns. */
 export function mergePolledTranscript(prev: ChatTurn[], next: ChatTurn[]): ChatTurn[] {
   if (!transcriptChanged(prev, next)) return prev;
@@ -45,6 +71,6 @@ export function mergePolledTranscript(prev: ChatTurn[], next: ChatTurn[]): ChatT
     if (committed) break;
     pending.unshift(turn);
   }
-  if (pending.length === 0) return next;
-  return [...next, ...pending];
+  if (pending.length === 0) return mergeImagePaths(prev, next);
+  return mergeImagePaths(prev, [...next, ...pending]);
 }
