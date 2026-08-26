@@ -1,76 +1,18 @@
 import { config as loadDotenv } from "dotenv";
 import { DEFAULT_WAIT_TIMEOUT_MS, parsePollMs, parseWaitTimeoutMs } from "./timing.js";
 
-/** Canonical gateway env names. Legacy aliases log a one-time deprecation warning. */
+/** Canonical gateway env names. Only these are read. */
 export const GATEWAY_URL_KEY = "GROKBOT_GATEWAY_URL";
 export const GATEWAY_TOKEN_KEY = "GROKBOT_GATEWAY_TOKEN";
 export const GATEWAY_PORT_KEY = "GROKBOT_GATEWAY_PORT";
-
-const LEGACY_URL_KEYS = ["SAND_GATEWAY_URL", "GROK_BOT_GATEWAY_URL", "SAND_HOST_GATEWAY_URL"] as const;
-const LEGACY_TOKEN_KEYS = ["SAND_GATEWAY_TOKEN", "GROK_BOT_GATEWAY_TOKEN", "SAND_HOST_GATEWAY_TOKEN"] as const;
-const LEGACY_PORT_KEYS = ["SAND_HOST_PORT"] as const;
-
-const deprecationWarned = new Set<string>();
-
-function warnDeprecated(legacy: string, canonical: string): void {
-  if (deprecationWarned.has(legacy)) return;
-  deprecationWarned.add(legacy);
-  process.stderr.write(`grok-tui: ${legacy} is deprecated; use ${canonical}\n`);
-}
-
-function firstNonEmpty(env: NodeJS.ProcessEnv, keys: readonly string[]): string | undefined {
-  for (const key of keys) {
-    const value = env[key]?.trim();
-    if (value) return value;
-  }
-  return undefined;
-}
-
-function readGatewayUrl(env: NodeJS.ProcessEnv): string | undefined {
-  const canonical = env[GATEWAY_URL_KEY]?.trim();
-  if (canonical) return canonical;
-  for (const key of LEGACY_URL_KEYS) {
-    const value = env[key]?.trim();
-    if (value) {
-      warnDeprecated(key, GATEWAY_URL_KEY);
-      return value;
-    }
-  }
-  return undefined;
-}
-
-function readGatewayToken(env: NodeJS.ProcessEnv): string | undefined {
-  const canonical = env[GATEWAY_TOKEN_KEY]?.trim();
-  if (canonical) return canonical;
-  for (const key of LEGACY_TOKEN_KEYS) {
-    const value = env[key]?.trim();
-    if (value) {
-      warnDeprecated(key, GATEWAY_TOKEN_KEY);
-      return value;
-    }
-  }
-  return undefined;
-}
-
-function readGatewayPort(env: NodeJS.ProcessEnv): string {
-  const canonical = env[GATEWAY_PORT_KEY]?.trim();
-  if (canonical) return canonical;
-  for (const key of LEGACY_PORT_KEYS) {
-    const value = env[key]?.trim();
-    if (value) {
-      warnDeprecated(key, GATEWAY_PORT_KEY);
-      return value;
-    }
-  }
-  return "1340";
-}
 
 export type AppConfig = {
   /** Present only in memory. Never print. */
   gatewayUrl?: string;
   defaultAgent?: string;
   mock: boolean;
-  waitTimeoutMs: number;
+  /** Cap on 1:1 wait-for-reply. Absent means wait until Esc. Default 10 minutes. */
+  waitTimeoutMs?: number;
   pollIntervalMs: number;
 };
 
@@ -79,33 +21,30 @@ export function loadDotEnvFile(): void {
 }
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const gatewayUrl = readGatewayUrl(env);
+  const gatewayUrl = env[GATEWAY_URL_KEY]?.trim() || undefined;
   const defaultAgent = env.GROK_TUI_DEFAULT_AGENT?.trim() || undefined;
   const mock =
     env.GROK_TUI_MOCK === "1" ||
     env.GROK_TUI_MOCK === "true" ||
     env.GROK_TUI_MOCK === "yes";
+  const waitTimeoutMs = parseWaitTimeoutMs(env.GROK_TUI_WAIT_TIMEOUT_MS, DEFAULT_WAIT_TIMEOUT_MS);
 
   return {
     ...(gatewayUrl ? { gatewayUrl } : {}),
     ...(defaultAgent ? { defaultAgent } : {}),
     mock,
-    waitTimeoutMs: parseWaitTimeoutMs(env.GROK_TUI_WAIT_TIMEOUT_MS, DEFAULT_WAIT_TIMEOUT_MS),
+    ...(waitTimeoutMs != null ? { waitTimeoutMs } : {}),
     pollIntervalMs: parsePollMs(env.GROK_TUI_POLL_MS),
   };
 }
 
 /** Token stays in-process. Callers must not log the return value. */
 export function readToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return readGatewayToken(env);
+  const token = env[GATEWAY_TOKEN_KEY]?.trim();
+  return token || undefined;
 }
 
 export function defaultLocalGatewayUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const port = readGatewayPort(env);
+  const port = env[GATEWAY_PORT_KEY]?.trim() || "1340";
   return `http://127.0.0.1:${port}`;
-}
-
-/** @internal Reset deprecation warnings between tests. */
-export function resetConfigWarningsForTests(): void {
-  deprecationWarned.clear();
 }

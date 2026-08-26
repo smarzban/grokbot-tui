@@ -18,9 +18,9 @@ export function errorTitle(kind: HostErrorKind): string {
 export function errorHint(kind: HostErrorKind): string {
   switch (kind) {
     case "missing-auth":
-      return "Copy .env.example to .env, set SAND_GATEWAY_TOKEN, or open the Grok Bot desktop app and retry.";
+      return "Copy .env.example to .env, set GROKBOT_GATEWAY_TOKEN, or open the Grok Bot desktop app and retry.";
     case "unauthorized":
-      return "The token in SAND_GATEWAY_TOKEN or the desktop session is wrong or expired. Do not paste it here.";
+      return "The token in GROKBOT_GATEWAY_TOKEN or the desktop session is wrong or expired. Do not paste it here.";
     case "host-down":
       return "Start the host, check GROKBOT_GATEWAY_URL (Tailscale or SSH tunnel), or run npm start -- --mock.";
     default:

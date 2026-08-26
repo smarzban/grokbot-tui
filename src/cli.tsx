@@ -38,11 +38,7 @@ function takeFlag(args: string[], name: string): string | undefined {
   return value != null && !value.startsWith("-") ? value : undefined;
 }
 
-/**
- * Ink's App-level exitOnCtrlC only matches raw \\x03. With kitty CSI-u,
- * stdin.read is rewritten so that fallback still fires. useInput handlers
- * also call exit() via isCtrlKey when they see the event.
- */
+/** Ink's exitOnCtrlC only matches raw \\x03; rewrite Kitty CSI-u Ctrl+C into it. */
 function installKittyCtrlCFallback(stdin: NodeJS.ReadStream): void {
   const orig = stdin.read.bind(stdin);
   stdin.read = ((size?: number) => {
@@ -79,12 +75,8 @@ async function main(argv: string[]): Promise<void> {
     </InkPictureProvider>,
     {
       alternateScreen: true,
-      // Ink App only matches raw \x03. kitty CSI-u Ctrl+C is rewritten to
-      // \x03 in stdin.read so this fallback still fires. useInput also
-      // calls exit() via isCtrlKey when it sees the event.
       exitOnCtrlC: true,
-      // Disambiguate only: enough for Shift+Enter on Ghostty. Do not enable
-      // reportAllKeysAsEscapeCodes — Ink 7 leaks CSI-u into the compose box.
+      // Disambiguate only (Shift+Enter). Full CSI-u leaks into the compose box.
       kittyKeyboard: { mode: "enabled", flags: ["disambiguateEscapeCodes"] },
     },
   );

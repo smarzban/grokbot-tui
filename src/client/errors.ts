@@ -64,7 +64,7 @@ export function mapHostError(err: unknown, secret?: string): HostClientError {
 }
 
 export const MISSING_AUTH_MESSAGE =
-  "No gateway token. Set SAND_GATEWAY_TOKEN (and GROKBOT_GATEWAY_URL if you are not on the Grok Bot computer), or open the Grok Bot desktop app and Allow Keychain access.";
+  "No gateway token. Set GROKBOT_GATEWAY_TOKEN (and GROKBOT_GATEWAY_URL if you are not on the Grok Bot computer), or open the Grok Bot desktop app and Allow Keychain access.";
 
 export const HOST_DOWN_MESSAGE =
   "The Grok Bot host is not reachable. Start the host, check the tunnel, or run with --mock.";
