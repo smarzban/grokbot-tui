@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
+import { isAbsFsPath } from "../client/attachments.js";
+import type { ChatImage, ChatTurn } from "../client/types.js";
 import { DEFAULT_POLL_MS, MIN_POLL_MS, parsePollMs } from "../timing.js";
-import type { ChatTurn } from "../client/types.js";
 
 export { DEFAULT_POLL_MS, MIN_POLL_MS, parsePollMs };
 
@@ -33,44 +35,97 @@ function isLocalPendingTurn(turn: ChatTurn): boolean {
   return turn.id.startsWith("local-") && turn.role === "user";
 }
 
-function mergeImagePaths(from: ChatTurn[], onto: ChatTurn[]): ChatTurn[] {
-  const fromById = new Map(from.map((turn) => [turn.id, turn]));
-  return onto.map((turn, index) => {
-    const src = fromById.get(turn.id) ?? from[index];
-    if (!turn.images?.length) return turn;
-    const images = turn.images.map((image, imageIndex) => {
-      if (image.path) return image;
-      const priorPath = src?.images?.[imageIndex]?.path;
-      return priorPath ? { ...image, path: priorPath } : image;
-    });
-    return { ...turn, images };
-  });
-}
-
-/** Copy local paint paths from one transcript onto another (same ids / indices). */
-export function mergeImagePathsFrom(from: ChatTurn[], onto: ChatTurn[]): ChatTurn[] {
-  return mergeImagePaths(from, onto);
-}
-
-/** True when a turn has host image refs that still need hydrateTurnImages. */
-export function transcriptNeedsImageHydrate(turns: ChatTurn[]): boolean {
-  return turns.some((turn) =>
-    (turn.images ?? []).some((image) => !image.path && Boolean(image.file_path || image.url)),
-  );
-}
-
-/** Apply a polled host tail while keeping uncommitted optimistic user turns. */
-export function mergePolledTranscript(prev: ChatTurn[], next: ChatTurn[]): ChatTurn[] {
-  if (!transcriptChanged(prev, next)) return prev;
-
+function splitPendingTail(prev: ChatTurn[], next: ChatTurn[]): { committed: ChatTurn[]; pending: ChatTurn[] } {
   const pending: ChatTurn[] = [];
   for (let i = prev.length - 1; i >= 0; i--) {
     const turn = prev[i];
     if (!turn || !isLocalPendingTurn(turn)) break;
-    const committed = next.some((host) => host.role === "user" && host.text === turn.text);
-    if (committed) break;
+    const committedOnHost = next.some((host) => host.role === "user" && host.text === turn.text);
+    if (committedOnHost) break;
     pending.unshift(turn);
   }
-  if (pending.length === 0) return mergeImagePaths(prev, next);
-  return mergeImagePaths(prev, [...next, ...pending]);
+  return { committed: prev.slice(0, prev.length - pending.length), pending };
+}
+
+/** Apply a polled host tail while keeping uncommitted optimistic user turns. */
+export function mergePolledTranscript(prev: ChatTurn[], next: ChatTurn[]): ChatTurn[] {
+  const { committed, pending } = splitPendingTail(prev, next);
+
+  let mergedHost: ChatTurn[];
+  if (next.length <= committed.length) {
+    const prefixLen = committed.length - next.length;
+    const prefix = committed.slice(0, prefixLen);
+    const oldTail = committed.slice(prefixLen);
+    mergedHost = [...prefix, ...mergeImagePaths(oldTail, next)];
+  } else {
+    mergedHost = mergeImagePaths(committed, next);
+  }
+
+  const merged = pending.length === 0 ? mergedHost : [...mergedHost, ...pending];
+  if (!transcriptChanged(prev, merged)) return prev;
+  return merged;
+}
+
+function mergeImagePaths(from: ChatTurn[], onto: ChatTurn[]): ChatTurn[] {
+  const fromById = new Map(from.map((turn) => [turn.id, turn]));
+  let anyChanged = false;
+  const result = onto.map((turn) => {
+    const src = fromById.get(turn.id);
+    if (!src?.images?.length || !turn.images?.length) return turn;
+    let turnChanged = false;
+    const images = turn.images.map((image, imageIndex) => {
+      if (image.path) return image;
+      const priorPath = src.images?.[imageIndex]?.path;
+      if (!priorPath) return image;
+      turnChanged = true;
+      return { ...image, path: priorPath };
+    });
+    if (!turnChanged) return turn;
+    anyChanged = true;
+    return { ...turn, images };
+  });
+  return anyChanged ? result : onto;
+}
+
+/** Copy local paint paths from one transcript onto another (matched by turn id only). */
+export function mergeImagePathsFrom(from: ChatTurn[], onto: ChatTurn[]): ChatTurn[] {
+  return mergeImagePaths(from, onto);
+}
+
+/** True when hydrateTurnImages still needs to fetch bytes for this image ref. */
+export function imageNeedsHydrate(image: ChatImage): boolean {
+  const hasWireRef = Boolean(image.file_path || image.url);
+  if (!image.path) return hasWireRef;
+  if (hasWireRef) return false;
+  if (!isAbsFsPath(image.path)) return false;
+  try {
+    return !existsSync(image.path);
+  } catch {
+    return true;
+  }
+}
+
+/** True when a turn has host image refs that still need hydrateTurnImages. */
+export function transcriptNeedsImageHydrate(turns: ChatTurn[]): boolean {
+  return turns.some((turn) => (turn.images ?? []).some((image) => imageNeedsHydrate(image)));
+}
+
+/** Stable key for images that still need hydration — skip duplicate in-flight work. */
+export function imageHydrateKey(turns: ChatTurn[]): string {
+  const parts: string[] = [];
+  for (const turn of turns) {
+    for (const image of turn.images ?? []) {
+      if (!imageNeedsHydrate(image)) continue;
+      parts.push(
+        image.id ??
+          image.entryId ??
+          image.file_path ??
+          image.url ??
+          image.path ??
+          image.alt ??
+          "?",
+      );
+    }
+  }
+  return parts.join("\0");
 }

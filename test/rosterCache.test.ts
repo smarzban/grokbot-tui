@@ -107,3 +107,24 @@ test("writeRosterCache returns false instead of throwing on disk failure", () =>
   });
   assert.equal(ok, false);
 });
+
+test("writeRosterCache removes a symlink target before writing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "grok-tui-roster-symlink-"));
+  try {
+    const key = "symlink";
+    const path = rosterCachePath(key, { cacheDir: dir });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path, "{}", { mode: 0o600 });
+    let unlinked = false;
+    writeRosterCache(key, SAMPLE, {
+      cacheDir: dir,
+      lstatSync: () => ({ isSymbolicLink: () => true, isDirectory: () => false }),
+      unlinkSync: () => {
+        unlinked = true;
+      },
+    });
+    assert.equal(unlinked, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

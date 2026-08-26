@@ -51,6 +51,7 @@ import { isCtrlKey } from "./keys.js";
 import { answeringIndicator, answeringMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
 import {
   DEFAULT_POLL_MS,
+  imageHydrateKey,
   mergeImagePathsFrom,
   mergePolledTranscript,
   transcriptNeedsImageHydrate,
@@ -248,14 +249,31 @@ export function Chat({
   }, []);
 
   const hydrateGenRef = useRef(0);
+  const hydrateInflightRef = useRef(false);
+  const hydrateKeyRef = useRef("");
   const scheduleImageHydrate = useCallback(
     (turnsToHydrate: ChatTurn[]) => {
-      if (!transcriptNeedsImageHydrate(turnsToHydrate)) return;
+      if (!transcriptNeedsImageHydrate(turnsToHydrate)) {
+        hydrateKeyRef.current = "";
+        return;
+      }
+      const key = imageHydrateKey(turnsToHydrate);
+      if (hydrateInflightRef.current || key === hydrateKeyRef.current) return;
+      hydrateKeyRef.current = key;
+      hydrateInflightRef.current = true;
       const gen = ++hydrateGenRef.current;
-      void client.hydrateTranscript(agentId, turnsToHydrate).then((hydrated) => {
-        if (gen !== hydrateGenRef.current) return;
-        setTurns((current) => mergeImagePathsFrom(hydrated, current));
-      });
+      void client
+        .hydrateTranscript(agentId, turnsToHydrate)
+        .then((hydrated) => {
+          if (gen !== hydrateGenRef.current) return;
+          setTurns((current) => mergeImagePathsFrom(hydrated, current));
+        })
+        .finally(() => {
+          hydrateInflightRef.current = false;
+          if (gen === hydrateGenRef.current && !transcriptNeedsImageHydrate(turnsRef.current)) {
+            hydrateKeyRef.current = "";
+          }
+        });
     },
     [agentId, client],
   );
@@ -343,11 +361,9 @@ export function Chat({
             transcriptRevisionNow: transcriptRevisionRef.current,
           })
         ) {
-          setTurns((prev) => {
-            const merged = mergePolledTranscript(prev, snapshot.history!);
-            scheduleImageHydrate(merged);
-            return merged;
-          });
+          const merged = mergePolledTranscript(turnsRef.current, snapshot.history!);
+          if (merged !== turnsRef.current) setTurns(merged);
+          scheduleImageHydrate(merged);
         }
         try {
           await delay(pollMs);

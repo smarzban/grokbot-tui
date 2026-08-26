@@ -3,7 +3,15 @@
  * before the slow gateway round-trip finishes. Never stores tokens.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { trimGatewayUrl } from "./http.js";
@@ -18,7 +26,9 @@ export type RosterCacheIo = {
   writeFileSync?: (path: string, data: string, options: { mode: number }) => void;
   mkdirSync?: (path: string, options: { recursive: boolean; mode: number }) => void;
   existsSync?: (path: string) => boolean;
+  lstatSync?: (path: string) => { isSymbolicLink(): boolean; isDirectory(): boolean };
   unlinkSync?: (path: string) => void;
+  renameSync?: (from: string, to: string) => void;
 };
 
 type CacheFile = {
@@ -112,8 +122,15 @@ export function readRosterCache(key: string, io: RosterCacheIo = {}): Agent[] | 
 export function writeRosterCache(key: string, agents: Agent[], io: RosterCacheIo = {}): boolean {
   try {
     const dir = rosterCacheDir(io);
+    const exists = io.existsSync ?? existsSync;
+    const lstat = io.lstatSync ?? lstatSync;
     const mkdir = io.mkdirSync ?? mkdirSync;
+    const unlink = io.unlinkSync ?? unlinkSync;
+    const rename = io.renameSync ?? renameSync;
+
+    if (exists(dir) && lstat(dir).isSymbolicLink()) unlink(dir);
     mkdir(dir, { recursive: true, mode: 0o700 });
+
     const payload: CacheFile = {
       version: VERSION,
       savedAtMs: Date.now(),
@@ -126,8 +143,15 @@ export function writeRosterCache(key: string, agents: Agent[], io: RosterCacheIo
         ...(agent.members?.length ? { members: agent.members } : {}),
       })),
     };
+
+    const path = rosterCachePath(key, io);
+    if (exists(path) && lstat(path).isSymbolicLink()) unlink(path);
+
+    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+    if (exists(tmp)) unlink(tmp);
     const write = io.writeFileSync ?? writeFileSync;
-    write(rosterCachePath(key, io), `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+    write(tmp, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+    rename(tmp, path);
     return true;
   } catch {
     return false;

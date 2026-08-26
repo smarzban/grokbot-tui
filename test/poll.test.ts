@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ChatTurn } from "../src/client/types.js";
 import {
+  imageNeedsHydrate,
+  mergeImagePathsFrom,
   mergePolledTranscript,
   parsePollMs,
   shouldPollTranscript,
   transcriptChanged,
+  transcriptNeedsImageHydrate,
 } from "../src/tui/poll.ts";
+import type { ChatImage, ChatTurn } from "../src/client/types.js";
 
 const you: ChatTurn = { id: "1", role: "user", speaker: "you", text: "hi" };
 const bot: ChatTurn = { id: "2", role: "assistant", speaker: "send-message", text: "hello" };
@@ -82,6 +85,59 @@ test("mergePolledTranscript keeps hydrated image paths across poll ticks", () =>
     images: [{ alt: "pic.png", file_path: "/home/box/x" }],
   };
   assert.deepEqual(mergePolledTranscript([hydrated], [polled]), [hydrated]);
+});
+
+test("mergePolledTranscript keeps a longer loaded prefix when poll returns a shorter tail", () => {
+  const prefix = Array.from({ length: 400 }, (_, i) => ({
+    id: `old-${i}`,
+    role: "assistant" as const,
+    speaker: "Ada",
+    text: `msg ${i}`,
+  }));
+  const sharedTail: ChatTurn[] = Array.from({ length: 100 }, (_, i) => ({
+    id: `tail-${i}`,
+    role: "assistant" as const,
+    speaker: "Ada",
+    text: `tail ${i}`,
+  }));
+  const loaded = [...prefix, ...sharedTail];
+  const polled = sharedTail.map((turn) => ({ ...turn, text: `${turn.text}!` }));
+  const merged = mergePolledTranscript(loaded, polled);
+  assert.equal(merged.length, 500);
+  assert.equal(merged[0]?.text, "msg 0");
+  assert.equal(merged[399]?.text, "msg 399");
+  assert.equal(merged[400]?.text, "tail 0!");
+});
+
+test("mergeImagePathsFrom does not copy paths when turn ids differ", () => {
+  const from: ChatTurn[] = [
+    {
+      id: "a",
+      role: "assistant",
+      speaker: "Ada",
+      text: "old",
+      images: [{ alt: "x", path: "/tmp/wrong.png" }],
+    },
+  ];
+  const onto: ChatTurn[] = [
+    {
+      id: "b",
+      role: "assistant",
+      speaker: "Ada",
+      text: "new",
+      images: [{ alt: "x" }],
+    },
+  ];
+  assert.deepEqual(mergeImagePathsFrom(from, onto), onto);
+});
+
+test("imageNeedsHydrate treats host attachmentPaths stored in path as pending", () => {
+  const hostPath: ChatImage = {
+    alt: "pic",
+    path: "/home/box/sand-data/missing.png",
+  };
+  assert.equal(imageNeedsHydrate(hostPath), true);
+  assert.equal(transcriptNeedsImageHydrate([{ id: "1", role: "assistant", speaker: "Ada", text: "", images: [hostPath] }]), true);
 });
 
 test("parsePollMs defaults to 1500 and rejects tiny intervals", () => {
