@@ -101,6 +101,8 @@ export type SendPromptInput = {
  */
 export interface HostClient {
   readonly source: HostSource;
+  /** Disk roster cache namespace; omitted for mock. */
+  readonly rosterCacheKey?: string;
   listAgents(): Promise<Agent[]>;
   getTranscript(agentId: string, limit?: number, options?: GetTranscriptOptions): Promise<ChatTurn[]>;
   /** Fill local image paths for turns fetched with hydrate: false. */

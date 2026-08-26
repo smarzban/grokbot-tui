@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { redact } from "../redact.js";
 import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
 import { isNotFoundError, mapHostError } from "./errors.js";
 import { gatewayPost, trimGatewayUrl, type GatewaySession } from "./http.js";
+import { rosterCacheKey } from "./rosterCache.js";
 import {
   asAgentRow,
   assistantCount,
@@ -53,6 +54,7 @@ function mapSessionError(err: unknown, session: GatewaySession): HostClientError
  */
 export class HttpHostClient implements HostClient {
   readonly source: HostSource;
+  readonly rosterCacheKey: string;
   readonly #session: GatewaySession;
   readonly #fetch?: typeof fetch;
   /** Coalesce concurrent listAgents calls — the gateway is slow and callers overlap. */
@@ -60,11 +62,14 @@ export class HttpHostClient implements HostClient {
 
   constructor(options: HttpHostOptions) {
     this.source = options.source ?? "gateway";
+    const gatewayUrl = trimGatewayUrl(options.gatewayUrl);
     this.#session = {
-      gatewayUrl: trimGatewayUrl(options.gatewayUrl),
+      gatewayUrl,
       token: options.token,
       headers: options.headers ?? {},
     };
+    const credentialId = createHash("sha256").update(options.token).digest("hex").slice(0, 16);
+    this.rosterCacheKey = rosterCacheKey(gatewayUrl, credentialId);
     this.#fetch = options.fetch;
   }
 
