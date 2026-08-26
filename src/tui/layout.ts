@@ -140,14 +140,12 @@ export function speakerLabel(turn: ChatTurn, agentNameOrCtx: string | SpeakerCon
   return name.length > 0 ? name : "bot";
 }
 
-/** Named Ink colors for channel speaker headers. Skips cyan (your messages) and white (body). */
+/** Named Ink colors for channel speaker headers. Skips cyan (your messages), white (body), yellow (images), and gray (too dim for names). */
 export const SPEAKER_COLORS = [
   "green",
   "magenta",
-  "yellow",
   "blue",
   "red",
-  "gray",
   "greenBright",
   "magentaBright",
   "blueBright",
