@@ -1,8 +1,10 @@
 import { Box, Text, useApp, useInput, useStdout, useWindowSize } from "ink";
+import { setTimeout as delay } from "node:timers/promises";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
+import { DEFAULT_ROSTER_POLL_MS } from "../timing.js";
 import {
   composeInnerHeight,
   FOOTER_HINT,
@@ -48,7 +50,7 @@ import {
 import { isCtrlKey } from "./keys.js";
 import { answeringIndicator, busyMemberNames, busyNamesSignature, memberListLabel } from "./roster.js";
 import { DEFAULT_POLL_MS, mergePolledTranscript } from "./poll.js";
-import { pollChatSnapshot, shouldApplyPollTranscript } from "./chatPoll.js";
+import { pollRosterSnapshot, pollTranscriptSnapshot, shouldApplyPollTranscript } from "./chatPoll.js";
 
 type Props = {
   client: HostClient;
@@ -232,17 +234,27 @@ export function Chat({
 
   const load = useCallback(async () => {
     transcriptRevisionRef.current += 1;
+    const revision = transcriptRevisionRef.current;
     setPollReady(false);
     setStatus({ kind: "loading" });
     setScrollOffset(0);
     try {
-      const history = await client.getTranscript(agentId);
+      const history = await client.getTranscript(agentId, undefined, { hydrate: false });
+      if (revision !== transcriptRevisionRef.current) return;
       setTurns(history);
       setStatus({ kind: "idle" });
+      setPollReady(true);
+      // Let roster poll win the gateway before background image downloads start.
+      void delay(4_000).then(() => {
+        if (revision !== transcriptRevisionRef.current) return;
+        void client.hydrateTranscript(agentId, history).then((hydrated) => {
+          if (revision === transcriptRevisionRef.current) setTurns(hydrated);
+        });
+      });
     } catch (err) {
+      if (revision !== transcriptRevisionRef.current) return;
       const message = err instanceof HostClientError ? err.message : errorMessage(err);
       setStatus({ kind: "error", message });
-    } finally {
       setPollReady(true);
     }
   }, [client, agentId]);
@@ -288,6 +300,43 @@ export function Chat({
   useEffect(() => {
     if (!pollReady) return;
     let cancelled = false;
+    const loop = async (): Promise<void> => {
+      while (!cancelled) {
+        const statusAtStart = statusRef.current.kind;
+        const transcriptRevisionAtStart = transcriptRevisionRef.current;
+        const snapshot = await pollTranscriptSnapshot({
+          client,
+          agentId,
+          statusKind: statusAtStart,
+        });
+        if (cancelled) return;
+        if (
+          shouldApplyPollTranscript({
+            snapshot,
+            statusAtStart,
+            statusNow: statusRef.current.kind,
+            transcriptRevisionAtStart,
+            transcriptRevisionNow: transcriptRevisionRef.current,
+          })
+        ) {
+          setTurns((prev) => mergePolledTranscript(prev, snapshot.history!));
+        }
+        try {
+          await delay(pollMs);
+        } catch {
+          return;
+        }
+      }
+    };
+    void loop();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, client, pollMs, pollReady]);
+
+  useEffect(() => {
+    if (!pollReady) return;
+    let cancelled = false;
     const applyRoster = (nextRoster: Agent[]) => {
       const names = busyMemberNames(agentRef.current, nextRoster);
       const sig = busyNamesSignature(names);
@@ -298,40 +347,38 @@ export function Chat({
       }
       onRoster?.(nextRoster);
     };
-    const tick = async () => {
-      if (cancelled) return;
-      const statusAtStart = statusRef.current.kind;
-      const transcriptRevisionAtStart = transcriptRevisionRef.current;
-      const snapshot = await pollChatSnapshot({
-        client,
-        agentId,
-        statusKind: statusAtStart,
-      });
-      if (cancelled) return;
-      if (
-        shouldApplyPollTranscript({
-          snapshot,
-          statusAtStart,
-          statusNow: statusRef.current.kind,
-          transcriptRevisionAtStart,
-          transcriptRevisionNow: transcriptRevisionRef.current,
-        })
-      ) {
-        setTurns((prev) => mergePolledTranscript(prev, snapshot.history!));
-      }
-      if (snapshot.rosterFetched && snapshot.roster) {
-        applyRoster(snapshot.roster);
+    const loop = async (): Promise<void> => {
+      while (!cancelled) {
+        const rosterSnap = await pollRosterSnapshot({ client });
+        if (cancelled) return;
+        if (rosterSnap.rosterFetched && rosterSnap.roster) {
+          applyRoster(rosterSnap.roster);
+        }
+        try {
+          await delay(DEFAULT_ROSTER_POLL_MS);
+        } catch {
+          return;
+        }
       }
     };
-    void tick();
-    const id = setInterval(() => {
-      void tick();
-    }, pollMs);
+    void loop();
     return () => {
       cancelled = true;
-      clearInterval(id);
     };
-  }, [agentId, client, onRoster, pollMs, pollReady]);
+  }, [client, onRoster, pollReady]);
+
+  const refreshRosterNow = useCallback(async () => {
+    const rosterSnap = await pollRosterSnapshot({ client });
+    if (!rosterSnap.rosterFetched || !rosterSnap.roster) return;
+    const names = busyMemberNames(agentRef.current, rosterSnap.roster);
+    const sig = busyNamesSignature(names);
+    if (sig !== busySigRef.current) {
+      busySigRef.current = sig;
+      setAnsweringLine(answeringIndicator(names));
+      setLiveRoster(rosterSnap.roster);
+    }
+    onRoster?.(rosterSnap.roster);
+  }, [client, onRoster]);
 
   const send = useCallback(
     async (text: string) => {
@@ -350,6 +397,7 @@ export function Chat({
       setDraft(EMPTY_DRAFT);
       setScrollOffset(0);
       setStatus({ kind: "sending" });
+      void refreshRosterNow();
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -368,7 +416,7 @@ export function Chat({
         // Rooms: keep the optimistic turn until idle poll sees the host commit.
         // A premature replace with a stale tail flickers the user's message away.
         if (!isGroup) {
-          const history = await client.getTranscript(agentId);
+          const history = await client.getTranscript(agentId, undefined, { hydrate: false });
           if (history.length > 0) {
             setTurns(history);
           } else if (result.reply) {
@@ -399,7 +447,7 @@ export function Chat({
         abortRef.current = null;
       }
     },
-    [agent.name, agentId, client, isGroup, timeoutMs],
+    [agent.name, agentId, client, isGroup, refreshRosterNow, timeoutMs],
   );
 
   const page = Math.max(1, Math.floor(lineBudget / 2));

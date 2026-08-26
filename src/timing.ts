@@ -1,5 +1,7 @@
 export const DEFAULT_POLL_MS = 1500;
 export const MIN_POLL_MS = 250;
+/** Gap between completed roster polls. listAgents itself takes ~15s on desktop. */
+export const DEFAULT_ROSTER_POLL_MS = 5_000;
 
 /** Default cap on 1:1 wait-for-reply. Esc still cancels earlier. */
 export const DEFAULT_WAIT_TIMEOUT_MS = 600_000;

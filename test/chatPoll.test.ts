@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Agent, ChatTurn, HostClient } from "../src/client/types.js";
-import { pollChatSnapshot, shouldApplyPollTranscript } from "../src/tui/chatPoll.js";
+import { pollChatSnapshot, pollRosterSnapshot, shouldApplyPollTranscript } from "../src/tui/chatPoll.js";
 import { mergePolledTranscript } from "../src/tui/poll.js";
 
 const ROOM_ID = "55555555-5555-4555-8555-555555555555";
@@ -22,10 +22,13 @@ function fakeClient(options: {
       if (options.listAgents) return options.listAgents();
       return typeof roster === "function" ? roster() : roster;
     },
-    async getTranscript(agentId: string) {
+    async getTranscript(agentId: string, _limit?: number, _options?: { hydrate?: boolean }) {
       if (options.getTranscript) return options.getTranscript(agentId);
       const transcript = options.transcript ?? [];
       return typeof transcript === "function" ? transcript(agentId) : transcript;
+    },
+    async hydrateTranscript(_agentId: string, turns: ChatTurn[]) {
+      return turns;
     },
     async sendPrompt() {
       return { accepted: true, status: "idle", elapsedMs: 0 };
@@ -104,6 +107,32 @@ test("Chat-style apply does not clobber a fresh 1:1 reply when a send races an i
   const snapshot = await pollChatSnapshot({ client, agentId: ADA_ID, statusKind: "idle" });
   assert.equal(snapshot.transcriptFetched, true);
   assert.deepEqual(applyPollTurns(fresh, snapshot, 3, 4), fresh);
+});
+
+test("pollRosterSnapshot returns roster when listAgents succeeds", async () => {
+  const roster: Agent[] = [
+    { id: ADA_ID, name: "Ada", isGroup: false },
+    { id: ROOM_ID, name: "project X", isGroup: true, memberIds: [ADA_ID] },
+  ];
+  const client = fakeClient({ transcript: [], roster });
+  const snapshot = await pollRosterSnapshot({ client });
+  assert.equal(snapshot.rosterFetched, true);
+  assert.deepEqual(
+    snapshot.roster?.map((agent) => agent.name),
+    ["Ada", "project X"],
+  );
+});
+
+test("pollRosterSnapshot signals roster failure instead of returning an empty list", async () => {
+  const client = fakeClient({
+    transcript: [],
+    listAgents: async () => {
+      throw new Error("host down");
+    },
+  });
+  const snapshot = await pollRosterSnapshot({ client });
+  assert.equal(snapshot.rosterFetched, false);
+  assert.equal(snapshot.roster, undefined);
 });
 
 test("pollChatSnapshot returns roster when listAgents succeeds", async () => {

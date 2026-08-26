@@ -17,6 +17,7 @@ import {
   HostClientError,
   type Agent,
   type ChatTurn,
+  type GetTranscriptOptions,
   type HostClient,
   type HostSource,
   type SendPromptInput,
@@ -54,6 +55,8 @@ export class HttpHostClient implements HostClient {
   readonly source: HostSource;
   readonly #session: GatewaySession;
   readonly #fetch?: typeof fetch;
+  /** Coalesce concurrent listAgents calls — the gateway is slow and callers overlap. */
+  #listAgentsInflight: Promise<Agent[]> | null = null;
 
   constructor(options: HttpHostOptions) {
     this.source = options.source ?? "gateway";
@@ -74,6 +77,14 @@ export class HttpHostClient implements HostClient {
   }
 
   async listAgents(): Promise<Agent[]> {
+    if (this.#listAgentsInflight) return this.#listAgentsInflight;
+    this.#listAgentsInflight = this.#fetchAgents().finally(() => {
+      this.#listAgentsInflight = null;
+    });
+    return this.#listAgentsInflight;
+  }
+
+  async #fetchAgents(): Promise<Agent[]> {
     try {
       const data = await this.#call("listAgents", {});
       const agents: Agent[] = [];
@@ -87,10 +98,23 @@ export class HttpHostClient implements HostClient {
     }
   }
 
-  async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
+  async getTranscript(
+    agentId: string,
+    limit = DEFAULT_TRANSCRIPT_LIMIT,
+    options: GetTranscriptOptions = {},
+  ): Promise<ChatTurn[]> {
     try {
       const payload = await this.#call("getAgentTranscriptTail", { id: agentId, limit });
       const turns = turnsFromHostTranscript(payload);
+      if (options.hydrate === false) return turns;
+      return await this.hydrateTranscript(agentId, turns);
+    } catch (err) {
+      throw mapSessionError(err, this.#session);
+    }
+  }
+
+  async hydrateTranscript(agentId: string, turns: ChatTurn[]): Promise<ChatTurn[]> {
+    try {
       const token = this.#session.token;
       const extra = this.#session.headers ?? {};
       return await hydrateTurnImages(agentId, turns, {
@@ -123,7 +147,9 @@ export class HttpHostClient implements HostClient {
     input.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       if (wait) {
-        const prior = await this.getTranscript(input.agentId);
+        const prior = await this.getTranscript(input.agentId, DEFAULT_TRANSCRIPT_LIMIT, {
+          hydrate: false,
+        });
         beforeCount = assistantCount(prior);
         beforeReply = lastAssistantText(prior);
         if (input.signal?.aborted) {
@@ -201,7 +227,9 @@ export class HttpHostClient implements HostClient {
     };
     while (true) {
       if (input.signal?.aborted) return cancel();
-      const turns = await this.getTranscript(input.agentId);
+      const turns = await this.getTranscript(input.agentId, DEFAULT_TRANSCRIPT_LIMIT, {
+        hydrate: false,
+      });
       const count = assistantCount(turns);
       const text = lastAssistantText(turns);
       if (count > beforeCount || (text != null && text !== beforeReply)) {
