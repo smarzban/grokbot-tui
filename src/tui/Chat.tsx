@@ -361,9 +361,12 @@ export function Chat({
             transcriptRevisionNow: transcriptRevisionRef.current,
           })
         ) {
-          const merged = mergePolledTranscript(turnsRef.current, snapshot.history!);
-          if (merged !== turnsRef.current) setTurns(merged);
-          scheduleImageHydrate(merged);
+          let merged: ChatTurn[] | undefined;
+          setTurns((prev) => {
+            merged = mergePolledTranscript(prev, snapshot.history!);
+            return merged;
+          });
+          if (merged) scheduleImageHydrate(merged);
         }
         try {
           await delay(pollMs);

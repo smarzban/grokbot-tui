@@ -109,6 +109,34 @@ test("mergePolledTranscript keeps a longer loaded prefix when poll returns a sho
   assert.equal(merged[400]?.text, "tail 0!");
 });
 
+test("mergePolledTranscript keeps mid-history when the poll tail slides forward", () => {
+  const head = Array.from({ length: 150 }, (_, i) => ({
+    id: `h-${i}`,
+    role: "assistant" as const,
+    speaker: "Ada",
+    text: `head ${i}`,
+  }));
+  const oldTail = Array.from({ length: 100 }, (_, i) => ({
+    id: `old-tail-${i}`,
+    role: "assistant" as const,
+    speaker: "Ada",
+    text: `tail ${i}`,
+  }));
+  const loaded = [...head, ...oldTail];
+  const polled = [
+    ...oldTail.slice(3),
+    { id: "new-0", role: "assistant" as const, speaker: "Ada", text: "brand new 0" },
+    { id: "new-1", role: "assistant" as const, speaker: "Ada", text: "brand new 1" },
+    { id: "new-2", role: "assistant" as const, speaker: "Ada", text: "brand new 2" },
+  ];
+  const merged = mergePolledTranscript(loaded, polled);
+  assert.equal(merged.length, 253);
+  assert.equal(merged[149]?.text, "head 149");
+  assert.equal(merged[150]?.text, "tail 0");
+  assert.equal(merged[152]?.text, "tail 2");
+  assert.equal(merged[252]?.text, "brand new 2");
+});
+
 test("mergeImagePathsFrom does not copy paths when turn ids differ", () => {
   const from: ChatTurn[] = [
     {

@@ -47,12 +47,39 @@ function splitPendingTail(prev: ChatTurn[], next: ChatTurn[]): { committed: Chat
   return { committed: prev.slice(0, prev.length - pending.length), pending };
 }
 
+function turnContentKey(turn: ChatTurn): string {
+  return `${turn.role}\0${turn.speaker}\0${turn.text}\0${turn.timestampMs ?? ""}`;
+}
+
+/** Longest suffix of committed that matches a prefix of the polled host tail. */
+function tailOverlapLen(committed: ChatTurn[], tail: ChatTurn[]): number {
+  const max = Math.min(committed.length, tail.length);
+  for (let len = max; len > 0; len--) {
+    let matched = true;
+    for (let i = 0; i < len; i++) {
+      const left = committed[committed.length - len + i];
+      const right = tail[i];
+      if (!left || !right || turnContentKey(left) !== turnContentKey(right)) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return len;
+  }
+  return 0;
+}
+
 /** Apply a polled host tail while keeping uncommitted optimistic user turns. */
 export function mergePolledTranscript(prev: ChatTurn[], next: ChatTurn[]): ChatTurn[] {
   const { committed, pending } = splitPendingTail(prev, next);
 
   let mergedHost: ChatTurn[];
-  if (next.length <= committed.length) {
+  const overlap = tailOverlapLen(committed, next);
+  if (overlap > 0) {
+    const prefix = committed.slice(0, committed.length - overlap);
+    const oldTail = committed.slice(committed.length - overlap);
+    mergedHost = [...prefix, ...mergeImagePaths(oldTail, next)];
+  } else if (next.length <= committed.length) {
     const prefixLen = committed.length - next.length;
     const prefix = committed.slice(0, prefixLen);
     const oldTail = committed.slice(prefixLen);

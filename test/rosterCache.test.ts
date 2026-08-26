@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -108,22 +108,27 @@ test("writeRosterCache returns false instead of throwing on disk failure", () =>
   assert.equal(ok, false);
 });
 
-test("writeRosterCache removes a symlink target before writing", () => {
+test("writeRosterCache removes a symlink roster file before writing", () => {
   const dir = mkdtempSync(join(tmpdir(), "grok-tui-roster-symlink-"));
   try {
     const key = "symlink";
     const path = rosterCachePath(key, { cacheDir: dir });
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path, "{}", { mode: 0o600 });
     let unlinked = false;
     writeRosterCache(key, SAMPLE, {
       cacheDir: dir,
-      lstatSync: () => ({ isSymbolicLink: () => true, isDirectory: () => false }),
-      unlinkSync: () => {
-        unlinked = true;
+      existsSync: (p) => (p === path ? true : existsSync(p)),
+      lstatSync: (p) =>
+        p === path
+          ? { isSymbolicLink: () => true, isDirectory: () => false }
+          : lstatSync(p),
+      unlinkSync: (p) => {
+        if (p === path) unlinked = true;
+        else unlinkSync(p);
       },
     });
     assert.equal(unlinked, true);
+    assert.ok(existsSync(join(dir, `roster-${key}.json`)));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -128,7 +128,10 @@ export function writeRosterCache(key: string, agents: Agent[], io: RosterCacheIo
     const unlink = io.unlinkSync ?? unlinkSync;
     const rename = io.renameSync ?? renameSync;
 
-    if (exists(dir) && lstat(dir).isSymbolicLink()) unlink(dir);
+    if (exists(dir)) {
+      const dirStat = lstat(dir);
+      if (!dirStat.isDirectory() && !dirStat.isSymbolicLink()) return false;
+    }
     mkdir(dir, { recursive: true, mode: 0o700 });
 
     const payload: CacheFile = {
