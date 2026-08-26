@@ -4,6 +4,16 @@ Terminal chat for your Grok Bot bots and channels.
 
 This is not an official xAI or Cursor product. There is no public Grok Bot chat API. The TUI posts to the host gateway (`POST {gatewayUrl}/api/{method}` with a bearer token). Command names and response shapes can change without notice. Treat the gateway token and every transcript as secrets.
 
+## Screenshots
+
+**Lobby** — pick a bot or channel:
+
+![Lobby — pick a bot or channel](docs/screenshots/lobby.png)
+
+**Chat** — scroll history, wait for replies, and draw images in Ghostty:
+
+![Chat with Signal](docs/screenshots/chat.png)
+
 ## Requirements
 
 - Node.js 22 or newer
