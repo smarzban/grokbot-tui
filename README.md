@@ -1,19 +1,23 @@
 # grokbot-tui
 
-Unofficial terminal UI for chatting with your Grok Bot agents while you work.
+Terminal chat for your Grok Bot bots and rooms.
 
-**This is not an official xAI or Cursor product.** There is no public Grok Bot chat API. The TUI talks to the undocumented host HTTP gateway with its own small client: `POST {gatewayUrl}/api/{method}` plus `Authorization: Bearer {token}` and any desktop session headers. It does not use `@adam91holt/grokbot-sdk` or `grok-bot-cli`. Command names and response shapes come from the live host and can change without notice. Treat the gateway token and every transcript as secrets.
+This is not an official xAI or Cursor product. There is no public Grok Bot chat API. The TUI posts to the host gateway (`POST {gatewayUrl}/api/{method}` with a bearer token). Command names and response shapes can change without notice. Treat the gateway token and every transcript as secrets.
+
+## Requirements
+
+- Node.js 22 or newer
+- An interactive terminal (TTY)
+- Ghostty if you want host images drawn with Kitty graphics (other terminals show placeholders)
 
 ## Install
-
-Requires **Node.js 22+**.
 
 ```sh
 npm install -g grokbot-tui
 grok-tui
 ```
 
-Or without a global install:
+Without a global install:
 
 ```sh
 npx grokbot-tui
@@ -22,140 +26,140 @@ npx grokbot-tui
 From a clone:
 
 ```sh
-git clone <this-repo>
+git clone https://github.com/smarzban/grokbot-tui.git
 cd grokbot-tui
 npm install
-npm start
-```
-
-Copy env defaults and fill in local secrets (never commit `.env`):
-
-```sh
 cp .env.example .env
-```
-
-## What v1 does
-
-- Lists your bots and rooms by name (a short id prefix only if two names collide)
-- Opens a framed chat with round corners: agent or room name (rooms also show members), idle/waiting in the header, clipped transcript, compose bar at the bottom. 1:1 chats hide `you` / bot speaker labels (alignment is enough); rooms still show member names.
-- Sends a message. 1:1 chats **poll until the bot is idle** and show the last reply; rooms send on the group id and let idle poll pick up each member’s turn
-- While idle, refreshes the transcript and roster so Grok Bot app messages and `isRunning` answering indicators show up without sending from the TUI
-- PageUp / PageDown, the scroll wheel, and ↑/↓ scroll the clipped history; new messages only pin to the bottom if you were already there
-- Images from the host draw in Ghostty. `user-attachment` rows use snake_case `file_name` / `file_path`; bot pictures arrive as `send-message` `{ type: "text", images: [{ url, alt }] }` with a `file://` URL. Those host paths live in the box (`/home/box/sand-data/...`) and are missing on the Mac, so the TUI calls `readAttachmentImage({ path })` over the same POST helper, decodes the `dataUrl`, caches a temp file, and paints it with Kitty. Pasting a local screenshot path as the message also draws. Filename-only host turns stay `[image] filename`. Ghostty already speaks the Kitty graphics protocol — no extra install.
-- In a room, `@` plus a prefix lists matching members; Tab or Enter inserts `@Name ` as plain text
-- Switch bots or rooms without quitting
-- Cancel an in-flight wait (Esc) and ask the host to interrupt if it supports `interruptAgentRun`
-- Uses the terminal alternate screen so the transcript stays framed instead of spilling into scrollback
-
-Out of scope: creating or deleting rooms, seating members, streaming, creating or deleting agents, Slack, avatars, rich markdown. The TUI does not upload attachments from the compose box.
-
-## Run
-
-```sh
 npm start
 ```
 
-Needs an interactive terminal (TTY). Mock host, no live Grok Bot (proves the TUI wiring):
+## Try it without a host
 
 ```sh
 npm start -- --mock
 # or: npm run start:mock
+# or: grok-tui --mock
 ```
 
-Other flags: `--agent NAME` (skip the picker if that bot or room exists), `--help`.
-
-| Key | Where | Action |
-| --- | --- | --- |
-| ↑ ↓ / j k, Enter | picker | Move / open |
-| PgUp / PgDn / wheel / Home / End / Ctrl+u / Ctrl+d | chat | Scroll history (stays put on idle poll). ↑ ↓ scroll only while the compose draft is a single line |
-| ← → / Ctrl+a / Ctrl+e | chat compose | Move the caret (Ctrl+a/e = whole draft). Cmd+← / Cmd+→ = current line. Backspace/Delete edit at the caret |
-| Shift+Enter / Ctrl+J | chat compose | Insert a newline. Enter (no Shift) sends. Cmd+Delete / Cmd+Backspace clears the draft. Long drafts wrap at word boundaries |
-| Tab / Enter / ↑ ↓ / Esc | chat mention menu | Complete, move, or close (does not send or leave the room). ← → move the caret and close the menu if they leave the `@token` |
-| Esc | chat | Cancel wait, or back to the picker |
-| Ctrl+b | chat | Switch bot / room |
-| r | picker / error | Retry / refresh |
-| q | picker / error | Quit |
-| Ctrl+c | anywhere | Quit |
+The mock host includes Ada, a room, and a sample photo so you can exercise the lobby, chat, scroll, and images without a live gateway.
 
 ## Connect to a real host
 
-### On the Grok Bot computer
+Pick one path. Do not put port 1340 on the public internet.
 
-If this TUI runs on the same machine as the host, set:
+### macOS with the Grok Bot desktop app
+
+1. Open Grok Bot and sign in.
+2. Allow the Keychain prompt for "Grok Bot Safe Storage" when asked.
+3. Run `grok-tui` or `npm start` with no token in `.env`.
+
+The TUI reads `~/Library/Application Support/Grok Bot/gateway-descriptor.json`, decrypts the session, and keeps the gateway URL path (only a trailing slash is trimmed). A `GROKBOT_GATEWAY_URL` alone, without a token, does not block this desktop path.
+
+### Same machine as the host
+
+Put both values in `.env`:
 
 ```sh
 GROKBOT_GATEWAY_URL=http://127.0.0.1:1340
-GROKBOT_GATEWAY_TOKEN=...   # from the host; do not git this
+GROKBOT_GATEWAY_TOKEN=...
 ```
 
-### From a laptop, tunneled gateway
-
-Reach the host over Tailscale or an SSH tunnel. **Do not put port 1340 on the public internet.**
+### Laptop over Tailscale or SSH tunnel
 
 ```sh
 GROKBOT_GATEWAY_URL=http://<tailscale-or-localhost-tunnel>:1340
 GROKBOT_GATEWAY_TOKEN=...
 ```
 
-Optional: `GROK_TUI_DEFAULT_AGENT=Ada` to open that seat on launch.
+Optional: `GROK_TUI_DEFAULT_AGENT=Ada` opens that bot or room and skips the lobby.
 
-### From a laptop with the Grok Bot desktop app (macOS)
+Connectivity check is `listAgents`. There is no separate health probe.
 
-Open Grok Bot and sign in. After you Allow the Keychain prompt ("Grok Bot Safe Storage"), this TUI decrypts `~/Library/Application Support/Grok Bot/gateway-descriptor.json` (version 1 `encrypted`, or version 2 a single `entries` blob) using Chromium Safe Storage and the Keychain password. Cleartext is `{ baseUrl, token, headers? }`. Headers often include routing such as `x-anyrun-network-token`; the URL path is kept (only a trailing slash is trimmed).
+## What you can do
 
-If no env **token** is set, that desktop session is used. A gateway URL alone (without a token) does not block desktop fallback. You should not need to copy a token. `listAgents` is the connectivity check.
+- Open the lobby and pick a bot or a room (rooms show members)
+- Chat in a framed alternate-screen UI
+- In a 1:1 chat, wait for the reply (default wait cap is 10 minutes; Esc cancels the wait and asks the host to interrupt when supported)
+- In a room, send without blocking; idle poll picks up each member's turn and "X is answering…" when a member is running
+- Scroll history with PageUp / PageDown, the wheel, Home / End, and Ctrl+u / Ctrl+d
+- Mention room members with `@` plus a prefix; Tab or Enter inserts `@Name `
+- Paste a local image path as the message text to draw it in Ghostty
+- Leave chat for the lobby with Esc (when not waiting) or Ctrl+b
+
+Out of scope in v1: creating or deleting agents or rooms, seating members, streaming replies, Slack, rich markdown, and uploading attachments from the compose box.
+
+## Keys
+
+| Key | Where | Action |
+| --- | --- | --- |
+| ↑ ↓ / j k, Enter | lobby | Move / open |
+| r | lobby / error | Refresh roster / retry connect |
+| q | lobby / error | Quit |
+| Esc | chat (idle) | Open the lobby |
+| Esc | chat (waiting) | Cancel the wait and interrupt the host run when supported |
+| Esc | mention menu | Close the menu (stay in the room) |
+| Ctrl+b | chat | Open the lobby (cancels a wait first if one is in flight) |
+| Enter | chat compose | Send |
+| Shift+Enter / Ctrl+J | chat compose | Newline |
+| ← → / Ctrl+a / Ctrl+e | chat compose | Move caret (Ctrl+a/e = whole draft). Cmd+← / Cmd+→ = current visual line |
+| Cmd+Delete / Cmd+Backspace | chat compose | Clear the draft |
+| PgUp / PgDn / wheel / Home / End / Ctrl+u / Ctrl+d | chat | Scroll history. ↑ ↓ scroll only while the draft is a single line |
+| Tab / Enter / ↑ ↓ | mention menu | Complete or move |
+| Ctrl+c | anywhere | Quit |
+
+Footer in chat: `Enter send  ·  Esc lobby  ·  Ctrl+c quit`.
 
 ## Env vars
 
-See `.env.example`. Never print, log, or commit `GROKBOT_GATEWAY_TOKEN` or the desktop session payload. The TUI redacts bearer tokens in error text.
+See `.env.example`. Never print, log, or commit `GROKBOT_GATEWAY_TOKEN` or the desktop session payload. Only these names are read (legacy `SAND_*` / `GROK_BOT_*` names are ignored).
 
 | Variable | Purpose |
 | --- | --- |
-| `GROKBOT_GATEWAY_URL` | Gateway origin (`http://127.0.0.1:1340` or a tunnel). Keep any path; only a trailing slash is trimmed. |
+| `GROKBOT_GATEWAY_URL` | Gateway origin. Keep any path; only a trailing slash is trimmed |
 | `GROKBOT_GATEWAY_TOKEN` | Gateway token |
-| `GROKBOT_GATEWAY_PORT` | Localhost port when a token is set without a URL (default 1340) |
-| `GROK_TUI_DEFAULT_AGENT` | Optional name or id to open first |
+| `GROKBOT_GATEWAY_PORT` | Localhost port when a token is set without a URL (default `1340`) |
+| `GROK_TUI_DEFAULT_AGENT` | Bot or room name/id to open first |
 | `GROK_TUI_MOCK=1` | Force the in-process mock host |
-| `GROK_TUI_WAIT_TIMEOUT_MS` | Max wait for a 1:1 reply (default 600000; `0` = until Esc; Esc always cancels) |
-| `GROK_TUI_POLL_MS` | Idle transcript poll interval (default 1500; minimum 250) |
+| `GROK_TUI_WAIT_TIMEOUT_MS` | 1:1 wait cap in ms (default `600000`). Exact `0` waits until Esc. Invalid values use the default |
+| `GROK_TUI_POLL_MS` | Idle transcript poll interval (default `1500`, minimum `250`) |
 
-## Tests
+## Images
 
-```sh
-npm test
-npm run typecheck
-```
+Ghostty speaks the Kitty graphics protocol. You do not need `viu`, `chafa`, or a Ghostty config toggle.
 
-Tests cover helpers and injected HTTP: mock host, scripted gateway `fetch`, desktop Keychain decrypt, layout/compose/keys/mouse, poll/roster, config, and the chat poll snapshot. The picker roster is refreshed from Chat via `onRoster` while chatting; Esc returns to that live list. Full Ink screen renders are not exercised in CI yet.
+- Host attachments and bot images are fetched through the gateway (`readAttachmentImage` for box paths such as `/home/box/sand-data/...`), cached under the system temp dir, then painted when the full image block is on screen.
+- Paste a local image path as the message to draw that file the same way.
+- Filename-only turns stay `[image] filename`.
+- iTerm and Terminal.app usually show placeholders, not Kitty placements.
 
-This environment usually cannot talk to a real Grok Bot host. Use `--mock` to exercise the TUI; point `.env` at your host to chat for real.
+`npm start -- --mock` seeds Ada with `fixtures/mock-photo.png` and a name-only placeholder so you can check both paths.
 
-## Images in Ghostty
+## Troubleshooting
 
-Ghostty implements the Kitty graphics protocol. This TUI does **not** need `viu`, `chafa`, `kitten`, Sixel, iTerm2 OSC 1337, or a Ghostty config toggle.
-
-How a turn is drawn:
-
-1. `getTranscript` / `getAgentTranscriptTail` rows: `user-attachment` (`file_name`, `file_path`) and `send-message` `message.images[]` (`url`, `alt`, `width`, `height`). A **local** file that exists (from the host, a pasted path, or a temp file we cached) is reserved 8 transcript rows and painted with [`ink-picture`](https://github.com/endernoke/ink-picture) (`protocol: { full: "kitty" }`, stable React keys so poll/re-render replaces in place). If the block is scrolled so those 8 rows are not fully in the pane, the TUI shows `[image] filename` instead of a Kitty placement (avoids ghost pixels).
-2. A user or assistant message whose text is (or contains) a **local image path that exists** — including `file://` URLs, quoted paths, and drag-quoted `\ ` spaces — is drawn the same way. A path-only message does not keep the raw path as bubble text. Extensions: png, jpg, jpeg, gif, webp, svg.
-3. Filename-only host turns (no `file_path` / host path / fetchable bytes) stay `[image] filename`.
-4. Host `file_path` and `file://` `message.images[].url` point at box paths (`/home/box/sand-data/...`) that do **not** exist on the Mac. After poll/load the TUI calls `readAttachmentImage({ path })` through the same POST helper. `path` is the host filesystem path (`file_path`, an abs `image.path`, or `fileURLToPath` of a `file://` URL). Never send the `file://` string. The host returns `{ dataUrl, width, height }`; bytes are cached under `os.tmpdir()` so the 1.5s idle poll does not re-download. URLs, tokens, dataUrls, and paths are not logged.
-5. `https://` values are stored as `url` (never printed) and fetched with session headers only when there is no host path for `readAttachmentImage`.
-
-`npm start -- --mock` seeds Ada with `fixtures/mock-photo.png` as an attachment **and** as a pasted path (both should draw), plus a name-only attachment (placeholder).
-
-## Scripts
-
-| Script | What |
+| Symptom | What to try |
 | --- | --- |
-| `npm start` | Launch the TUI (`tsx src/cli.tsx`) |
-| `npm run start:mock` | Launch against the mock host |
-| `npm test` | Behavioral tests (`tsx --test`) |
-| `npm run typecheck` | `tsc` on `src` and `test` |
-| `npm run build` | Compile to `dist/` (used by `grok-tui` bin) |
+| "Missing gateway token" | Set `GROKBOT_GATEWAY_TOKEN` in `.env`, or open the Grok Bot desktop app and Allow Keychain access |
+| "Gateway rejected the token" | Refresh the token or re-sign into the desktop app. Do not paste the token into chat |
+| "Grok Bot host is down" | Start the host, check the tunnel URL, or run `--mock` |
+| Lobby is empty after a blip | Press `r` on the lobby or error screen to refresh |
+| Esc does not leave chat | If the header shows waiting/sent, Esc cancels the wait first. Press Esc again for the lobby, or use Ctrl+b |
+| Images stay as `[image] …` | Use Ghostty, keep the full picture block on screen, and confirm the host can serve `readAttachmentImage` |
 
 ## Security
 
-- Gateway tokens live only in memory (env or the desktop session). They are never written to logs or the UI.
-- Transcripts are sensitive. The TUI shows chat text only, not raw gateway payloads.
-- Destructive host commands (`deleteAgent`, box reset, …) are not exposed.
+- Tokens stay in memory (env or desktop session). They are not written to logs or the UI.
+- Error text redacts bearer tokens and `GROKBOT_GATEWAY_TOKEN=…` fragments.
+- The TUI shows transcript text only, not raw gateway payloads.
+- Destructive host commands (`deleteAgent`, box reset, and similar) are not exposed.
+
+## Develop from a clone
+
+```sh
+npm start          # tsx src/cli.tsx
+npm run start:mock
+npm test
+npm run typecheck
+npm run build      # writes dist/ for the grok-tui bin
+```
+
+Tests cover the mock host, scripted gateway `fetch`, desktop Keychain decrypt, layout/compose/keys/mouse, poll/roster, config, and chat poll snapshots. Full Ink screen renders are not in CI yet.
