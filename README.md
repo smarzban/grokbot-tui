@@ -192,6 +192,8 @@ Tests cover the mock host, scripted gateway `fetch`, desktop Keychain decrypt, l
 
 1. Update `CHANGELOG.md` and bump `package.json` / `package-lock.json`.
 2. Commit on `main`, tag `vX.Y.Z`, and push the branch and tag.
-3. The [release workflow](.github/workflows/release.yml) runs tests, publishes to npm, and opens a GitHub release from the changelog section.
+3. The [release workflow](.github/workflows/release.yml) runs tests, publishes to npm via a [Trusted Publisher](https://docs.npmjs.com/trusted-publishers), and opens or updates the GitHub release from the changelog section.
 
-Requires an `NPM_TOKEN` repository secret with publish access. CI on pull requests uses [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Trusted Publisher on npm must match this repo exactly: owner `smarzban`, repository `grokbot-tui`, workflow filename `release.yml`. The workflow uses Node 24 (npm ≥ 11.5.1) for OIDC publish — do not set `NODE_AUTH_TOKEN` / `NPM_TOKEN` in that job.
+
+CI on pull requests uses [.github/workflows/ci.yml](.github/workflows/ci.yml).

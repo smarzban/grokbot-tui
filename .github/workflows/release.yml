@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: https://registry.npmjs.org
           cache: npm
 
@@ -26,8 +26,6 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub release
         env:
@@ -39,6 +37,8 @@ jobs:
             capture && /^## \[/ { exit }
             capture { print }
           ' CHANGELOG.md)
-          gh release create "$GITHUB_REF_NAME" \
-            --title "v${version}" \
-            --notes "$notes"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "v${version}" --notes "$notes"
+          else
+            gh release create "$GITHUB_REF_NAME" --title "v${version}" --notes "$notes"
+          fi
