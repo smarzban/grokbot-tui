@@ -91,7 +91,7 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
               return <Text key={`spacer-${i}`}> </Text>;
             }
             const isSelected = row.agent.id === selected?.id;
-            const name = agentLabel(row.agent, agents).slice(0, Math.max(1, inner - 8));
+            const name = agentLabel(row.agent, agents).slice(0, Math.max(1, inner - 2));
             return (
               <Text key={row.agent.id} inverse={isSelected}>
                 {isSelected ? "› " : "  "}
