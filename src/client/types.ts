@@ -20,6 +20,13 @@ export type Agent = {
 };
 
 export const DEFAULT_TRANSCRIPT_LIMIT = 500;
+/** Poll only needs the recent tail for sync; keep gateway payloads small. */
+export const POLL_TRANSCRIPT_LIMIT = 100;
+
+export type GetTranscriptOptions = {
+  /** When false, return wire turns immediately and skip attachment downloads. */
+  hydrate?: boolean;
+};
 
 /**
  * Image on a chat turn. Fields fill in stages:
@@ -94,8 +101,12 @@ export type SendPromptInput = {
  */
 export interface HostClient {
   readonly source: HostSource;
+  /** Disk roster cache namespace; omitted for mock. */
+  readonly rosterCacheKey?: string;
   listAgents(): Promise<Agent[]>;
-  getTranscript(agentId: string, limit?: number): Promise<ChatTurn[]>;
+  getTranscript(agentId: string, limit?: number, options?: GetTranscriptOptions): Promise<ChatTurn[]>;
+  /** Fill local image paths for turns fetched with hydrate: false. */
+  hydrateTranscript(agentId: string, turns: ChatTurn[]): Promise<ChatTurn[]>;
   sendPrompt(input: SendPromptInput): Promise<SendResult>;
   interrupt(agentId: string): Promise<{ hadActiveRun: boolean }>;
 }

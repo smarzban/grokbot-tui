@@ -1,7 +1,8 @@
 import { Box, Text, useWindowSize } from "ink";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppConfig } from "../config.js";
 import { openHostClient } from "../client/factory.js";
+import { readRosterCache, writeRosterCache } from "../client/rosterCache.js";
 import { HostClientError, type Agent, type HostClient, type HostErrorKind } from "../client/types.js";
 import { errorMessage } from "../redact.js";
 import { Chat } from "./Chat.js";
@@ -24,6 +25,21 @@ function pickDefault(agents: Agent[], wanted?: string): Agent | undefined {
   if (!wanted) return undefined;
   const needle = wanted.trim().toLowerCase();
   return agents.find((agent) => agent.id.toLowerCase() === needle || agent.name.toLowerCase() === needle);
+}
+
+function openScreenForRoster(
+  roster: Agent[],
+  defaultAgent: string | undefined,
+  setAgents: (agents: Agent[]) => void,
+  setScreen: (screen: Screen) => void,
+): void {
+  setAgents(roster);
+  const fallback = pickDefault(roster, defaultAgent);
+  if (fallback) {
+    setScreen({ name: "chat", agent: fallback });
+  } else {
+    setScreen({ name: "picker" });
+  }
 }
 
 function BootScreen({ note }: { note: string }) {
@@ -56,22 +72,67 @@ export function App({ config, token, mock }: Props) {
   const [client, setClient] = useState<HostClient | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [bootNote, setBootNote] = useState("Connecting to Grok Bot host…");
+  const [rosterRefreshing, setRosterRefreshing] = useState(false);
+  /** Monotonic generation so overlapping listAgents calls discard stale results. */
+  const rosterGenRef = useRef(0);
+
+  const fetchRoster = useCallback(
+    async (
+      host: HostClient,
+      options: { silent: boolean; openScreen: boolean; showRefreshing: boolean },
+    ) => {
+      const gen = ++rosterGenRef.current;
+      if (options.showRefreshing) setRosterRefreshing(true);
+      try {
+        const roster = await host.listAgents();
+        if (gen !== rosterGenRef.current) return;
+        if (host.rosterCacheKey) writeRosterCache(host.rosterCacheKey, roster);
+        if (options.openScreen) {
+          openScreenForRoster(roster, config.defaultAgent, setAgents, setScreen);
+        } else {
+          setAgents(roster);
+        }
+      } catch (err) {
+        if (gen !== rosterGenRef.current) return;
+        if (!options.silent) {
+          const kind = err instanceof HostClientError ? err.kind : "unknown";
+          setScreen({
+            name: "error",
+            kind,
+            message: err instanceof HostClientError ? err.message : errorMessage(err, token),
+          });
+        }
+      } finally {
+        if (options.showRefreshing && gen === rosterGenRef.current) {
+          setRosterRefreshing(false);
+        }
+      }
+    },
+    [config.defaultAgent, token],
+  );
 
   const boot = useCallback(async () => {
+    rosterGenRef.current += 1;
     setScreen({ name: "boot" });
     setBootNote("Connecting to Grok Bot host…");
+    setRosterRefreshing(false);
     try {
       const next = await openHostClient({ config, token, mock });
       setClient(next);
-      setBootNote("Loading agents…");
-      const roster = await next.listAgents();
-      setAgents(roster);
-      const fallback = pickDefault(roster, config.defaultAgent);
-      if (fallback) {
-        setScreen({ name: "chat", agent: fallback });
-      } else {
+      const wantsDefault = Boolean(config.defaultAgent?.trim());
+      const cacheKey = next.rosterCacheKey;
+      const cached = !mock && cacheKey ? readRosterCache(cacheKey) : undefined;
+
+      // Warm lobby only: never open chat from cache; default agent waits on the gateway.
+      if (!wantsDefault && cached !== undefined) {
+        setAgents(cached);
         setScreen({ name: "picker" });
+        void fetchRoster(next, { silent: true, openScreen: false, showRefreshing: true });
+        return;
       }
+
+      setBootNote("Loading agents…");
+      await fetchRoster(next, { silent: false, openScreen: true, showRefreshing: false });
     } catch (err) {
       const kind = err instanceof HostClientError ? err.kind : "unknown";
       setScreen({
@@ -80,7 +141,7 @@ export function App({ config, token, mock }: Props) {
         message: err instanceof HostClientError ? err.message : errorMessage(err, token),
       });
     }
-  }, [config, mock, token]);
+  }, [config, fetchRoster, mock, token]);
 
   useEffect(() => {
     void boot();
@@ -91,18 +152,8 @@ export function App({ config, token, mock }: Props) {
       await boot();
       return;
     }
-    try {
-      const roster = await client.listAgents();
-      setAgents(roster);
-    } catch (err) {
-      const kind = err instanceof HostClientError ? err.kind : "unknown";
-      setScreen({
-        name: "error",
-        kind,
-        message: err instanceof HostClientError ? err.message : errorMessage(err, token),
-      });
-    }
-  }, [boot, client, token]);
+    await fetchRoster(client, { silent: false, openScreen: false, showRefreshing: true });
+  }, [boot, client, fetchRoster]);
 
   if (screen.name === "boot") {
     return <BootScreen note={bootNote} />;
@@ -120,6 +171,7 @@ export function App({ config, token, mock }: Props) {
     return (
       <Picker
         agents={agents}
+        refreshing={rosterRefreshing}
         onSelect={(agent) => setScreen({ name: "chat", agent })}
         onRefresh={() => void refreshRoster()}
       />

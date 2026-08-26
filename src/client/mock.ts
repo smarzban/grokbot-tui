@@ -2,7 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { HOST_DOWN_MESSAGE, MISSING_AUTH_MESSAGE } from "./errors.js";
-import { DEFAULT_TRANSCRIPT_LIMIT, HostClientError } from "./types.js";
+import { DEFAULT_TRANSCRIPT_LIMIT, HostClientError, type GetTranscriptOptions } from "./types.js";
 import type { Agent, ChatTurn, HostClient, SendPromptInput, SendResult } from "./types.js";
 
 export type MockHostOptions = {
@@ -160,10 +160,19 @@ export class MockHostClient implements HostClient {
     return this.#agents.map(cloneAgent);
   }
 
-  async getTranscript(agentId: string, limit = DEFAULT_TRANSCRIPT_LIMIT): Promise<ChatTurn[]> {
+  async getTranscript(
+    agentId: string,
+    limit = DEFAULT_TRANSCRIPT_LIMIT,
+    _options: GetTranscriptOptions = {},
+  ): Promise<ChatTurn[]> {
     this.#guard();
     const turns = this.#transcripts.get(agentId) ?? [];
     return cloneTurns(turns.slice(-limit));
+  }
+
+  async hydrateTranscript(_agentId: string, turns: ChatTurn[]): Promise<ChatTurn[]> {
+    this.#guard();
+    return cloneTurns(turns);
   }
 
   /** Simulate a bot starting or finishing a run from the Grok Bot app. */

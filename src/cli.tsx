@@ -69,7 +69,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
   installKittyCtrlCFallback(process.stdin);
-  render(
+  const { waitUntilExit } = render(
     <InkPictureProvider>
       <App config={config} token={token} mock={mock} />
     </InkPictureProvider>,
@@ -80,6 +80,8 @@ async function main(argv: string[]): Promise<void> {
       kittyKeyboard: { mode: "enabled", flags: ["disambiguateEscapeCodes"] },
     },
   );
+  await waitUntilExit();
+  process.exit(process.exitCode ?? 0);
 }
 
 main(process.argv).catch((err: unknown) => {

@@ -1,4 +1,5 @@
-import type { Agent } from "../client/types.js";
+import type { Agent, ChatTurn } from "../client/types.js";
+import { mentionNames } from "./mentions.js";
 
 export type PickerRow =
   | { kind: "heading"; title: string }
@@ -107,4 +108,35 @@ export function answeringIndicator(names: string[]): string | null {
   if (names.length === 0) return null;
   if (names.length === 1) return `${names[0]} is answering…`;
   return `${names.join(", ")} answering…`;
+}
+
+/** @mentions in a room prompt that match known member names. */
+export function mentionedMemberNames(text: string, focus: Agent, roster: Agent[]): string[] {
+  if (!focus.isGroup) return [];
+  const lower = text.toLowerCase();
+  const out: string[] = [];
+  for (const name of mentionNames(focus, roster)) {
+    if (lower.includes(`@${name.toLowerCase()}`) && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+function focusBotName(focus: Agent): string {
+  return focus.name.trim() || "bot";
+}
+
+/**
+ * Who should be answering when the transcript tail is a user turn with no
+ * assistant reply yet. Uses the fast transcript poll — not listAgents.
+ */
+export function pendingReplyMemberNames(turns: ChatTurn[], focus: Agent, roster: Agent[]): string[] {
+  const last = turns.at(-1);
+  if (!last || last.role !== "user") return [];
+  if (!focus.isGroup) return [focusBotName(focus)];
+  return mentionedMemberNames(last.text, focus, roster);
+}
+
+/** Transcript-only answering names — avoids stale listAgents busy flags arriving late. */
+export function answeringMemberNames(focus: Agent, roster: Agent[], turns: ChatTurn[]): string[] {
+  return pendingReplyMemberNames(turns, focus, roster);
 }

@@ -1,18 +1,22 @@
-import type { Agent, ChatTurn, HostClient } from "../client/types.js";
+import { POLL_TRANSCRIPT_LIMIT, type Agent, type ChatTurn, type HostClient } from "../client/types.js";
 import { shouldPollTranscript } from "./poll.js";
 
-export type PollChatSnapshot = {
-  /** Host tail when the transcript fetch succeeded. */
+export type TranscriptPollSnapshot = {
   history?: ChatTurn[];
   transcriptFetched: boolean;
-  /** Roster rows when listAgents succeeded. */
+};
+
+export type RosterPollSnapshot = {
   roster?: Agent[];
   rosterFetched: boolean;
 };
 
+/** @deprecated Use pollTranscriptSnapshot / pollRosterSnapshot separately. */
+export type PollChatSnapshot = TranscriptPollSnapshot & RosterPollSnapshot;
+
 /** True when this poll did not race with a local transcript update. */
 export function shouldApplyPollTranscript(input: {
-  snapshot: PollChatSnapshot;
+  snapshot: TranscriptPollSnapshot;
   statusAtStart: string;
   statusNow: string;
   transcriptRevisionAtStart: number;
@@ -27,40 +31,45 @@ export function shouldApplyPollTranscript(input: {
   );
 }
 
-/** One idle poll cycle: transcript tail (when allowed) plus roster. */
+/** Fetch the recent transcript tail for sync. Skips image hydrate. */
+export async function pollTranscriptSnapshot(input: {
+  client: HostClient;
+  agentId: string;
+  statusKind: string;
+}): Promise<TranscriptPollSnapshot> {
+  if (!shouldPollTranscript(input.statusKind)) {
+    return { transcriptFetched: false };
+  }
+  try {
+    const fetched = await input.client.getTranscript(input.agentId, POLL_TRANSCRIPT_LIMIT, {
+      hydrate: false,
+    });
+    if (!shouldPollTranscript(input.statusKind)) {
+      return { transcriptFetched: false };
+    }
+    return { history: fetched, transcriptFetched: true };
+  } catch {
+    return { transcriptFetched: false };
+  }
+}
+
+/** Fetch roster for isRunning / answering indicator. Slow on the gateway — call sparingly. */
+export async function pollRosterSnapshot(input: { client: HostClient }): Promise<RosterPollSnapshot> {
+  try {
+    const roster = await input.client.listAgents();
+    return { roster, rosterFetched: true };
+  } catch {
+    return { rosterFetched: false };
+  }
+}
+
+/** One combined poll cycle (tests only — Chat uses separate cadences). */
 export async function pollChatSnapshot(input: {
   client: HostClient;
   agentId: string;
   statusKind: string;
 }): Promise<PollChatSnapshot> {
-  let history: ChatTurn[] | undefined;
-  let transcriptFetched = false;
-
-  if (shouldPollTranscript(input.statusKind)) {
-    try {
-      const fetched = await input.client.getTranscript(input.agentId);
-      if (shouldPollTranscript(input.statusKind)) {
-        history = fetched;
-        transcriptFetched = true;
-      }
-    } catch {
-      // Keep the last good transcript; a single failed poll is not an error overlay.
-    }
-  }
-
-  let roster: Agent[] | undefined;
-  let rosterFetched = false;
-  try {
-    roster = await input.client.listAgents();
-    rosterFetched = true;
-  } catch {
-    // Keep the last roster; a single failed poll is not an error overlay.
-  }
-
-  return {
-    ...(history != null ? { history } : {}),
-    transcriptFetched,
-    ...(roster != null ? { roster } : {}),
-    rosterFetched,
-  };
+  const transcript = await pollTranscriptSnapshot(input);
+  const roster = await pollRosterSnapshot({ client: input.client });
+  return { ...transcript, ...roster };
 }
