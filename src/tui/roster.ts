@@ -2,7 +2,8 @@ import type { Agent } from "../client/types.js";
 
 export type PickerRow =
   | { kind: "heading"; title: string }
-  | { kind: "item"; agent: Agent };
+  | { kind: "item"; agent: Agent }
+  | { kind: "spacer" };
 
 export function splitRoster(agents: Agent[]): { bots: Agent[]; rooms: Agent[] } {
   const bots: Agent[] = [];
@@ -28,7 +29,11 @@ export function pickerRows(agents: Agent[]): PickerRow[] {
     for (const agent of bots) rows.push({ kind: "item", agent });
   }
   if (rooms.length > 0) {
-    rows.push({ kind: "heading", title: "Rooms" });
+    if (bots.length > 0) {
+      rows.push({ kind: "spacer" });
+      rows.push({ kind: "spacer" });
+    }
+    rows.push({ kind: "heading", title: "Channels" });
     for (const agent of rooms) rows.push({ kind: "item", agent });
   }
   return rows;

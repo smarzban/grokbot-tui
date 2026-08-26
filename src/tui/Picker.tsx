@@ -65,7 +65,7 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
       <Box borderStyle="round" borderColor="cyan" paddingX={1} height={3} overflow="hidden">
         <Text bold color="cyan">
-          Pick a bot or room
+          Pick a bot or channel
         </Text>
       </Box>
       <Box
@@ -77,9 +77,9 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
         overflow="hidden"
       >
         {items.length === 0 ? (
-          <Text color="yellow">No bots or rooms on this host. Create one in the Grok Bot app, then press r.</Text>
+          <Text color="yellow">No bots or channels on this host. Create one in the Grok Bot app, then press r.</Text>
         ) : (
-          visible.map((row) => {
+          visible.map((row, i) => {
             if (row.kind === "heading") {
               return (
                 <Text key={`h-${row.title}`} dimColor>
@@ -87,13 +87,15 @@ export function Picker({ agents, onSelect, onRefresh }: Props) {
                 </Text>
               );
             }
+            if (row.kind === "spacer") {
+              return <Text key={`spacer-${i}`}> </Text>;
+            }
             const isSelected = row.agent.id === selected?.id;
-            const name = agentLabel(row.agent, agents).slice(0, Math.max(1, inner - 8));
+            const name = agentLabel(row.agent, agents).slice(0, Math.max(1, inner - 2));
             return (
               <Text key={row.agent.id} inverse={isSelected}>
                 {isSelected ? "› " : "  "}
                 {name}
-                {row.agent.isGroup ? <Text dimColor>  room</Text> : null}
               </Text>
             );
           })
