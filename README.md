@@ -187,3 +187,11 @@ npm run build      # writes dist/ for the grok-tui bin
 ```
 
 Tests cover the mock host, scripted gateway `fetch`, desktop Keychain decrypt, layout/compose/keys/mouse, poll/roster, config, and chat poll snapshots. Full Ink screen renders are not in CI yet.
+
+## Release
+
+1. Update `CHANGELOG.md` and bump `package.json` / `package-lock.json`.
+2. Commit on `main`, tag `vX.Y.Z`, and push the branch and tag.
+3. The [release workflow](.github/workflows/release.yml) runs tests, publishes to npm, and opens a GitHub release from the changelog section.
+
+Requires an `NPM_TOKEN` repository secret with publish access. CI on pull requests uses [.github/workflows/ci.yml](.github/workflows/ci.yml).
