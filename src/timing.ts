@@ -15,15 +15,18 @@ export function parsePollMs(raw: string | undefined, fallback = DEFAULT_POLL_MS)
 /**
  * Parse `GROK_TUI_WAIT_TIMEOUT_MS`.
  * - unset/invalid → fallback (default 10 minutes)
- * - `0` → unlimited (returns undefined; Esc still cancels)
- * - positive → that many ms
+ * - exact `0` → unlimited (returns undefined; Esc still cancels)
+ * - positive integer → that many ms
+ * Fractional or garbage prefixes (`0.5`, `0ms`) are invalid, not unlimited.
  */
 export function parseWaitTimeoutMs(
   raw: string | undefined,
   fallback = DEFAULT_WAIT_TIMEOUT_MS,
 ): number | undefined {
   if (raw == null || raw.trim() === "") return fallback;
-  const n = Number.parseInt(raw, 10);
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return fallback;
+  const n = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(n) || n < 0) return fallback;
   if (n === 0) return undefined;
   return n;

@@ -60,11 +60,14 @@ test("canonical URL and token beat missing legacy-only config", () => {
   );
 });
 
-test("parseWaitTimeoutMs: unset defaults, 0 is unlimited, invalid falls back", () => {
+test("parseWaitTimeoutMs: unset defaults, exact 0 is unlimited, invalid falls back", () => {
   assert.equal(parseWaitTimeoutMs(undefined), DEFAULT_WAIT_TIMEOUT_MS);
   assert.equal(parseWaitTimeoutMs(""), DEFAULT_WAIT_TIMEOUT_MS);
   assert.equal(parseWaitTimeoutMs("nope"), DEFAULT_WAIT_TIMEOUT_MS);
   assert.equal(parseWaitTimeoutMs("-1"), DEFAULT_WAIT_TIMEOUT_MS);
+  assert.equal(parseWaitTimeoutMs("0.5"), DEFAULT_WAIT_TIMEOUT_MS);
+  assert.equal(parseWaitTimeoutMs("0ms"), DEFAULT_WAIT_TIMEOUT_MS);
+  assert.equal(parseWaitTimeoutMs("0oops"), DEFAULT_WAIT_TIMEOUT_MS);
   assert.equal(parseWaitTimeoutMs("0"), undefined);
   assert.equal(parseWaitTimeoutMs("45000"), 45_000);
 });

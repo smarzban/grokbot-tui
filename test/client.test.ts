@@ -308,6 +308,26 @@ test("gateway client sendPrompt times out when the host never replies", async ()
   });
   assert.equal(result.status, "timeout");
   assert.equal(result.accepted, true);
+  const history = await client.getTranscript(ADA_ID);
+  assert.equal(history.some((turn) => turn.role === "user" && turn.text === "no reply"), true);
+  assert.equal(history.some((turn) => turn.role === "assistant"), false);
+});
+
+test("gateway client waits without timeout when timeoutMs is omitted", async () => {
+  const host = createScriptedHost({ silentSend: true });
+  const client = clientFor(host);
+  const controller = new AbortController();
+  const pending = client.sendPrompt({
+    agentId: ADA_ID,
+    prompt: "hang",
+    wait: true,
+    signal: controller.signal,
+  });
+  await delay(120);
+  controller.abort();
+  const result = await pending;
+  assert.equal(result.status, "cancelled");
+  assert.notEqual(result.status, "timeout");
 });
 
 test("gateway client maps a down host", async () => {
@@ -347,6 +367,29 @@ test("openHostClient uses env URL+token through the owned POST helper", async ()
   assert.equal(client.source, "gateway");
   const agents = await client.listAgents();
   assert.equal(agents[0]?.name, ADA_NAME);
+});
+
+test("openHostClient uses GROKBOT_GATEWAY_PORT when token is set without a URL", async () => {
+  const host = createScriptedHost();
+  const seen: string[] = [];
+  const inner = createScriptedFetch(host);
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    seen.push(url);
+    return inner(input, init);
+  };
+  const client = await openHostClient({
+    config: { ...readConfig({}), mock: false },
+    token: host.token,
+    env: { GROKBOT_GATEWAY_PORT: "1999" },
+    fetch: fetchImpl,
+    loadDesktop: async () => {
+      throw new Error("desktop must not load when token is set");
+    },
+  });
+  assert.equal(client.source, "gateway");
+  await client.listAgents();
+  assert.ok(seen.some((url) => url.startsWith("http://127.0.0.1:1999/api/")));
 });
 
 test("openHostClient uses mock when asked", async () => {
@@ -553,7 +596,10 @@ test("transcript parser keeps host id, entryId, mime, and attachment names", () 
 
 test("redact never leaves a token in output", () => {
   const secret = "super-secret-token-value";
-  const out = redact(`Authorization: Bearer ${secret} SAND_GATEWAY_TOKEN=${secret}`, secret);
+  const out = redact(
+    `Authorization: Bearer ${secret} GROKBOT_GATEWAY_TOKEN=${secret} SAND_GATEWAY_TOKEN=${secret}`,
+    secret,
+  );
   assert.doesNotMatch(out, /super-secret/);
   assert.match(out, /\[redacted\]/);
 });
