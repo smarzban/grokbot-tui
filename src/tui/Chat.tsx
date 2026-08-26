@@ -23,6 +23,7 @@ import {
   transcriptPadBottom,
   turnsToRows,
   visibleTranscript,
+  speakerColor,
   type TranscriptRow,
 } from "./layout.js";
 import { IMAGE_CELL_ROWS, imagePlaceholder } from "./images.js";
@@ -130,7 +131,13 @@ function renderTranscriptRows(rows: TranscriptRow[], inner: number): ReactNode[]
       continue;
     }
     const isUser = row.align === "end";
-    const color = isUser ? "cyan" : row.kind === "speaker" ? "green" : row.kind === "image" ? "yellow" : "white";
+    const color = isUser
+      ? "cyan"
+      : row.kind === "speaker"
+        ? speakerColor(row.text)
+        : row.kind === "image"
+          ? "yellow"
+          : "white";
     out.push(
       <Text
         key={`${row.kind}-${i}-${row.text.trimStart().slice(0, 16)}`}

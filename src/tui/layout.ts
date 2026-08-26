@@ -140,6 +140,30 @@ export function speakerLabel(turn: ChatTurn, agentNameOrCtx: string | SpeakerCon
   return name.length > 0 ? name : "bot";
 }
 
+/** Named Ink colors for channel speaker headers. Skips cyan (your messages), white (body), yellow (images), and gray (too dim for names). */
+export const SPEAKER_COLORS = [
+  "green",
+  "magenta",
+  "blue",
+  "red",
+  "greenBright",
+  "magentaBright",
+  "blueBright",
+  "redBright",
+] as const;
+
+export type SpeakerColor = (typeof SPEAKER_COLORS)[number];
+
+/** Stable color per display name so the same member stays the same hue in a channel. */
+export function speakerColor(name: string): SpeakerColor {
+  const n = name.trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < n.length; i++) {
+    hash = (hash * 31 + n.charCodeAt(i)) >>> 0;
+  }
+  return SPEAKER_COLORS[hash % SPEAKER_COLORS.length]!;
+}
+
 /**
  * Blank rows after a turn, before the next visible turn.
  * 1:1 user↔assistant is two; rooms opposite-side is one; consecutive
@@ -169,7 +193,7 @@ export function turnsToRows(
     const turn = visible[i]!;
     const align = turnAlign(turn.role);
     const pending: TranscriptRow[] = [];
-    if (ctx.isGroup === true) {
+    if (ctx.isGroup === true && turn.role !== "user") {
       pending.push({
         kind: "speaker",
         text: speakerLabel(turn, ctx),
