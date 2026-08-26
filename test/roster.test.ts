@@ -16,11 +16,13 @@ const room: Agent = {
   ],
 };
 
-test("pickerRows sections bots then rooms", () => {
+test("pickerRows sections bots then channels with spacers", () => {
   const rows = pickerRows([ada, room, bea]);
   assert.deepEqual(
-    rows.map((row) => (row.kind === "heading" ? row.title : row.agent.name)),
-    ["Bots", "Ada", "Bea", "Rooms", "project X"],
+    rows.map((row) =>
+      row.kind === "heading" ? row.title : row.kind === "spacer" ? "" : row.agent.name,
+    ),
+    ["Bots", "Ada", "Bea", "", "", "Channels", "project X"],
   );
   const items = pickerItems([ada, room, bea]);
   assert.deepEqual(
@@ -33,10 +35,10 @@ test("pickerRows sections bots then rooms", () => {
   assert.equal(rooms[0]?.isGroup, true);
 });
 
-test("visiblePickerRows keeps the selected room in view with its heading", () => {
+test("visiblePickerRows keeps the selected channel in view with its heading", () => {
   const rows = pickerRows([ada, bea, room]);
   const visible = visiblePickerRows(rows, room.id, 3);
-  assert.ok(visible.some((row) => row.kind === "heading" && row.title === "Rooms"));
+  assert.ok(visible.some((row) => row.kind === "heading" && row.title === "Channels"));
   assert.ok(visible.some((row) => row.kind === "item" && row.agent.id === room.id));
 });
 

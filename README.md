@@ -1,6 +1,6 @@
 # grokbot-tui
 
-Terminal chat for your Grok Bot bots and rooms.
+Terminal chat for your Grok Bot bots and channels.
 
 This is not an official xAI or Cursor product. There is no public Grok Bot chat API. The TUI posts to the host gateway (`POST {gatewayUrl}/api/{method}` with a bearer token). Command names and response shapes can change without notice. Treat the gateway token and every transcript as secrets.
 
@@ -41,7 +41,7 @@ npm start -- --mock
 # or: grok-tui --mock
 ```
 
-The mock host includes Ada, a room, and a sample photo so you can exercise the lobby, chat, scroll, and images without a live gateway.
+The mock host includes Ada, a channel, and a sample photo so you can exercise the lobby, chat, scroll, and images without a live gateway.
 
 ## Connect to a real host
 
@@ -71,22 +71,22 @@ GROKBOT_GATEWAY_URL=http://<tailscale-or-localhost-tunnel>:1340
 GROKBOT_GATEWAY_TOKEN=...
 ```
 
-Optional: `GROK_TUI_DEFAULT_AGENT=Ada` opens that bot or room and skips the lobby.
+Optional: `GROK_TUI_DEFAULT_AGENT=Ada` opens that bot or channel and skips the lobby.
 
 Connectivity check is `listAgents`. There is no separate health probe.
 
 ## What you can do
 
-- Open the lobby and pick a bot or a room (rooms show members)
+- Open the lobby and pick a bot or a channel (channels show members)
 - Chat in a framed alternate-screen UI
 - In a 1:1 chat, wait for the reply (default wait cap is 10 minutes; Esc cancels the wait and asks the host to interrupt when supported)
-- In a room, send without blocking; idle poll picks up each member's turn and "X is answering…" when a member is running
+- In a channel, send without blocking; idle poll picks up each member's turn and "X is answering…" when a member is running
 - Scroll history with PageUp / PageDown, the wheel, Home / End, and Ctrl+u / Ctrl+d
-- Mention room members with `@` plus a prefix; Tab or Enter inserts `@Name `
+- Mention channel members with `@` plus a prefix; Tab or Enter inserts `@Name `
 - Paste a local image path as the message text to draw it in Ghostty
 - Leave chat for the lobby with Esc (when not waiting) or Ctrl+b
 
-Out of scope in v1: creating or deleting agents or rooms, seating members, streaming replies, Slack, rich markdown, and uploading attachments from the compose box.
+Out of scope in v1: creating or deleting agents or channels, seating members, streaming replies, Slack, rich markdown, and uploading attachments from the compose box.
 
 ## Keys
 
@@ -97,7 +97,7 @@ Out of scope in v1: creating or deleting agents or rooms, seating members, strea
 | q | lobby / error | Quit |
 | Esc | chat (idle) | Open the lobby |
 | Esc | chat (waiting) | Cancel the wait and interrupt the host run when supported |
-| Esc | mention menu | Close the menu (stay in the room) |
+| Esc | mention menu | Close the menu (stay in the channel) |
 | Ctrl+b | chat | Open the lobby (cancels a wait first if one is in flight) |
 | Enter | chat compose | Send |
 | Shift+Enter / Ctrl+J | chat compose | Newline |
@@ -118,7 +118,7 @@ See `.env.example`. Never print, log, or commit `GROKBOT_GATEWAY_TOKEN` or the d
 | `GROKBOT_GATEWAY_URL` | Gateway origin. Keep any path; only a trailing slash is trimmed |
 | `GROKBOT_GATEWAY_TOKEN` | Gateway token |
 | `GROKBOT_GATEWAY_PORT` | Localhost port when a token is set without a URL (default `1340`) |
-| `GROK_TUI_DEFAULT_AGENT` | Bot or room name/id to open first |
+| `GROK_TUI_DEFAULT_AGENT` | Bot or channel name/id to open first |
 | `GROK_TUI_MOCK=1` | Force the in-process mock host |
 | `GROK_TUI_WAIT_TIMEOUT_MS` | 1:1 wait cap in ms (default `600000`). Exact `0` waits until Esc. Invalid values use the default |
 | `GROK_TUI_POLL_MS` | Idle transcript poll interval (default `1500`, minimum `250`) |

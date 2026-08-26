@@ -18,7 +18,7 @@ already covers it, so the pattern self-propagates to every clone.
 
 ## Project overview
 
-`grokbot-tui` is an unofficial Ink/React terminal UI for chatting with Grok Bot bots and rooms.
+`grokbot-tui` is an unofficial Ink/React terminal UI for chatting with Grok Bot bots and channels.
 The published package name is `grokbot-tui`; the CLI bin is `grok-tui`. It uses a small owned HTTP
 client against the host gateway (`POST {gatewayUrl}/api/{method}` with a bearer token and optional
 desktop session headers). There is no official public chat API. Stack: Node.js 22+, TypeScript,
@@ -35,7 +35,7 @@ Ink 7, React 19, `ink-picture` for Kitty graphics in Ghostty.
 ## Conventions
 
 - Prefer small PRs; keep `main` shippable.
-- User-facing name for the bot/room chooser is **lobby**. Chat footer: `Esc lobby`. Idle Esc and
+- User-facing name for the bot/channel chooser is **lobby**. Chat footer: `Esc lobby`. Idle Esc and
   Ctrl+b open the lobby; Esc while waiting cancels the wait and interrupts the host when supported.
 - Canonical env only: `GROKBOT_GATEWAY_URL`, `GROKBOT_GATEWAY_TOKEN`, `GROKBOT_GATEWAY_PORT`. Legacy
   `SAND_*` / `GROK_BOT_*` names are ignored.
