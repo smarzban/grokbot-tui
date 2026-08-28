@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
-import { DEFAULT_ROSTER_POLL_MS } from "../timing.js";
+import { DEFAULT_ROSTER_POLL_MS, isTranscriptPollBusy, transcriptPollDelayMs } from "../timing.js";
 import {
   composeInnerHeight,
   FOOTER_HINT,
@@ -194,6 +194,8 @@ export function Chat({
   agentRef.current = agent;
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
+  const liveRosterRef = useRef(liveRoster);
+  liveRosterRef.current = liveRoster;
   const busySigRef = useRef(busyNamesSignature(answeringMemberNames(agent, roster, [])));
   const agentId = agent.id;
   const liveAgent = liveRoster.find((row) => row.id === agentId) ?? agent;
@@ -342,6 +344,7 @@ export function Chat({
   useEffect(() => {
     if (!pollReady) return;
     let cancelled = false;
+    let unchangedTicks = 0;
     const loop = async (): Promise<void> => {
       while (!cancelled) {
         const statusAtStart = statusRef.current.kind;
@@ -352,6 +355,7 @@ export function Chat({
           statusKind: statusAtStart,
         });
         if (cancelled) return;
+        let appliedChange = false;
         if (
           shouldApplyPollTranscript({
             snapshot,
@@ -361,15 +365,25 @@ export function Chat({
             transcriptRevisionNow: transcriptRevisionRef.current,
           })
         ) {
+          const before = turnsRef.current;
           let merged: ChatTurn[] | undefined;
           setTurns((prev) => {
             merged = mergePolledTranscript(prev, snapshot.history!);
             return merged;
           });
+          appliedChange = merged !== undefined && merged !== before;
           if (merged) scheduleImageHydrate(merged);
         }
+        if (appliedChange) unchangedTicks = 0;
+        else unchangedTicks += 1;
+        const answering = answeringMemberNames(agentRef.current, liveRosterRef.current, turnsRef.current).length > 0;
+        const waitMs = transcriptPollDelayMs({
+          idleMs: pollMs,
+          busy: isTranscriptPollBusy(statusRef.current.kind, answering),
+          unchangedTicks,
+        });
         try {
-          await delay(pollMs);
+          await delay(waitMs);
         } catch {
           return;
         }

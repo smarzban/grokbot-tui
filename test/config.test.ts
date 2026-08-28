@@ -8,7 +8,15 @@ import {
   readConfig,
   readToken,
 } from "../src/config.js";
-import { DEFAULT_WAIT_TIMEOUT_MS, parseWaitTimeoutMs } from "../src/timing.js";
+import {
+  DEFAULT_WAIT_TIMEOUT_MS,
+  IDLE_POLL_BACKOFF_MS,
+  IDLE_POLL_STABLE_TICKS,
+  MIN_POLL_MS,
+  isTranscriptPollBusy,
+  parseWaitTimeoutMs,
+  transcriptPollDelayMs,
+} from "../src/timing.js";
 
 test("readConfig uses canonical gateway env names", () => {
   const config = readConfig({
@@ -70,4 +78,34 @@ test("parseWaitTimeoutMs: unset defaults, exact 0 is unlimited, invalid falls ba
   assert.equal(parseWaitTimeoutMs("0oops"), DEFAULT_WAIT_TIMEOUT_MS);
   assert.equal(parseWaitTimeoutMs("0"), undefined);
   assert.equal(parseWaitTimeoutMs("45000"), 45_000);
+});
+
+test("transcriptPollDelayMs is fast when busy and backs off when idle", () => {
+  assert.equal(
+    transcriptPollDelayMs({ idleMs: 1500, busy: true, unchangedTicks: 0 }),
+    MIN_POLL_MS,
+  );
+  assert.equal(
+    transcriptPollDelayMs({ idleMs: 1500, busy: false, unchangedTicks: 0 }),
+    1500,
+  );
+  assert.equal(
+    transcriptPollDelayMs({
+      idleMs: 1500,
+      busy: false,
+      unchangedTicks: IDLE_POLL_STABLE_TICKS,
+    }),
+    IDLE_POLL_BACKOFF_MS,
+  );
+  assert.equal(
+    transcriptPollDelayMs({ idleMs: 5000, busy: false, unchangedTicks: IDLE_POLL_STABLE_TICKS }),
+    5000,
+  );
+});
+
+test("isTranscriptPollBusy covers sending and answering", () => {
+  assert.equal(isTranscriptPollBusy("idle", false), false);
+  assert.equal(isTranscriptPollBusy("sending", false), true);
+  assert.equal(isTranscriptPollBusy("idle", true), true);
+  assert.equal(isTranscriptPollBusy("loading", false), true);
 });

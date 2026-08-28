@@ -102,3 +102,23 @@ test("answeringMemberNames follows transcript pending, not roster busy flags", (
   ];
   assert.deepEqual(answeringMemberNames(room, [dev, room], done), []);
 });
+
+test("answeringMemberNames in channels ignores delayed roster busy without @mention", () => {
+  const dev: Agent = { id: "dev", name: "Dev", isGroup: false, isRunning: true };
+  const turns: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "hello all" }];
+  assert.deepEqual(answeringMemberNames(room, [dev, room], turns), []);
+});
+
+test("answeringMemberNames treats trailing tool markers as working", () => {
+  const working: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "go" },
+    { id: "2", role: "tool", speaker: "Ada", speakerId: "ada", text: "" },
+  ];
+  assert.deepEqual(answeringMemberNames(ada, [ada], working), ["Ada"]);
+  const roomWorking: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "@Dev go" },
+    { id: "2", role: "assistant", speaker: "Dev", text: "ok" },
+    { id: "3", role: "tool", speaker: "Dev", speakerId: "dev", text: "" },
+  ];
+  assert.deepEqual(answeringMemberNames(room, [room], roomWorking), ["Dev"]);
+});

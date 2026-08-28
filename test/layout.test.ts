@@ -87,6 +87,28 @@ test("agentLabel hides ids unless names collide", () => {
   assert.doesNotMatch(agentLabel(ada, [ada, ada2]), /11111111-1111/);
 });
 
+test("agentLabel appends title when present", () => {
+  const ada = { id: "ada", name: "Ada", title: "Ops lead" };
+  assert.equal(agentLabel(ada, [ada]), "Ada · Ops lead");
+});
+
+test("tool role turns stay out of the transcript pane", () => {
+  const rows = turnsToRows(
+    [
+      { id: "1", role: "user", speaker: "you", text: "go" },
+      { id: "2", role: "tool", speaker: "Ada", text: "" },
+      { id: "3", role: "assistant", speaker: "Ada", text: "done" },
+    ],
+    40,
+    "Ada",
+  );
+  assert.equal(
+    rows.some((row) => row.role === "tool"),
+    false,
+  );
+  assert.ok(rows.some((row) => row.text.includes("done")));
+});
+
 test("transcript inner height leaves room for chrome and a bottom padding row", () => {
   assert.equal(transcriptInnerHeight(24) > 10, true);
   assert.ok(transcriptInnerHeight(24) < 24);
