@@ -67,7 +67,8 @@ export type ChatImage = {
 
 export type ChatTurn = {
   id: string;
-  role: "user" | "assistant" | "system";
+  /** `tool` = activity marker (tool-call / streaming); hidden from the chat pane. */
+  role: "user" | "assistant" | "system" | "tool";
   speaker: string;
   /** Host author / fromAgent id when the transcript row carried one. */
   speakerId?: string;

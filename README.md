@@ -136,7 +136,7 @@ See `.env.example`. Never print, log, or commit `GROKBOT_GATEWAY_TOKEN` or the d
 | `GROK_TUI_DEFAULT_AGENT`   | Bot or channel name/id to open first                                                             |
 | `GROK_TUI_MOCK=1`          | Force the in-process mock host                                                                   |
 | `GROK_TUI_WAIT_TIMEOUT_MS` | 1:1 wait cap in ms (default `600000`). Exact `0` waits until Esc. Invalid values use the default |
-| `GROK_TUI_POLL_MS`         | Idle transcript poll interval (default `1500`, minimum `250`)                                    |
+| `GROK_TUI_POLL_MS`         | Idle transcript poll baseline (default `1500`, minimum `250`). Busy chat uses 250ms; quiet chats back off to 4s |
 
 
 
@@ -187,6 +187,8 @@ npm run build      # writes dist/ for the grok-tui bin
 ```
 
 Tests cover the mock host, scripted gateway `fetch`, desktop Keychain decrypt, layout/compose/keys/mouse, poll/roster, config, and chat poll snapshots. Full Ink screen renders are not in CI yet.
+
+Transcript sync is gateway poll only (`getAgentTranscriptTail`). Host-side `$AGENT_DATA` JSONL trees (used by some box-local UIs) are not readable from the laptop TUI today.
 
 ## Release
 
