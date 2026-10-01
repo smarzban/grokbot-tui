@@ -2,6 +2,8 @@ import { TOOL_WORKING_MAX_AGE_MS } from "../timing.js";
 import type { Agent, ChatTurn } from "../client/types.js";
 import { mentionNames } from "./mentions.js";
 
+/** Same window as tool markers — an unanswered user turn older than this is not "answering". */
+export const PENDING_REPLY_MAX_AGE_MS = TOOL_WORKING_MAX_AGE_MS;
 export type PickerRow =
   | { kind: "heading"; title: string }
   | { kind: "item"; agent: Agent }
@@ -131,10 +133,19 @@ const TOOL_SPEAKER_KINDS = new Set(["tool-call", "tool-result", "tool"]);
 /**
  * Who should be answering when the transcript tail is a user turn with no
  * assistant reply yet. Uses the fast transcript poll — not listAgents.
+ * Requires a recent host/local timestamp so Esc-after-send does not pin
+ * "answering" + busy poll forever.
  */
-export function pendingReplyMemberNames(turns: ChatTurn[], focus: Agent, roster: Agent[]): string[] {
+export function pendingReplyMemberNames(
+  turns: ChatTurn[],
+  focus: Agent,
+  roster: Agent[],
+  nowMs: number = Date.now(),
+): string[] {
   const last = turns.at(-1);
   if (!last || last.role !== "user") return [];
+  if (last.timestampMs == null || !Number.isFinite(last.timestampMs)) return [];
+  if (nowMs - last.timestampMs > PENDING_REPLY_MAX_AGE_MS) return [];
   if (!focus.isGroup) return [focusBotName(focus)];
   return mentionedMemberNames(last.text, focus, roster);
 }
@@ -175,7 +186,7 @@ export function answeringMemberNames(
   turns: ChatTurn[],
   nowMs: number = Date.now(),
 ): string[] {
-  const pending = pendingReplyMemberNames(turns, focus, roster);
+  const pending = pendingReplyMemberNames(turns, focus, roster, nowMs);
   if (pending.length > 0) return pending;
   return workingMemberNames(turns, focus, roster, nowMs);
 }
