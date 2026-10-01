@@ -93,6 +93,7 @@ function isNonChatToolSpeaker(speaker: string): boolean {
 }
 
 export function isVisibleChatTurn(turn: ChatTurn): boolean {
+  if (turn.role === "tool") return false;
   if ((turn.images?.length ?? 0) > 0) return true;
   if (turn.role === "user") return true;
   if (isNonChatToolSpeaker(turn.speaker) && turn.text.trim().length === 0) return false;
@@ -342,11 +343,16 @@ export function shortIdPrefix(id: string): string {
   return compact.slice(0, 6);
 }
 
-export function agentLabel(agent: { id: string; name: string }, roster: Array<{ id: string; name: string }>): string {
+export function agentLabel(
+  agent: { id: string; name: string; title?: string },
+  roster: Array<{ id: string; name: string }>,
+): string {
   const name = agent.name.trim() || "agent";
   const dup = roster.filter((row) => row.name.trim().toLowerCase() === name.toLowerCase()).length > 1;
-  if (!dup) return name;
-  return `${name} · ${shortIdPrefix(agent.id)}`;
+  const base = dup ? `${name} · ${shortIdPrefix(agent.id)}` : name;
+  const title = agent.title?.trim();
+  if (!title) return base;
+  return `${base} · ${title}`;
 }
 
 /** True when `start` is a complete reserved picture block (safe for Kitty). */

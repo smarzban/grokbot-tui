@@ -1,6 +1,9 @@
+import { TOOL_WORKING_MAX_AGE_MS } from "../timing.js";
 import type { Agent, ChatTurn } from "../client/types.js";
 import { mentionNames } from "./mentions.js";
 
+/** Same window as tool markers — an unanswered user turn older than this is not "answering". */
+export const PENDING_REPLY_MAX_AGE_MS = TOOL_WORKING_MAX_AGE_MS;
 export type PickerRow =
   | { kind: "heading"; title: string }
   | { kind: "item"; agent: Agent }
@@ -125,18 +128,65 @@ function focusBotName(focus: Agent): string {
   return focus.name.trim() || "bot";
 }
 
+const TOOL_SPEAKER_KINDS = new Set(["tool-call", "tool-result", "tool"]);
+
 /**
  * Who should be answering when the transcript tail is a user turn with no
  * assistant reply yet. Uses the fast transcript poll — not listAgents.
+ * Requires a recent host/local timestamp so Esc-after-send does not pin
+ * "answering" + busy poll forever.
  */
-export function pendingReplyMemberNames(turns: ChatTurn[], focus: Agent, roster: Agent[]): string[] {
+export function pendingReplyMemberNames(
+  turns: ChatTurn[],
+  focus: Agent,
+  roster: Agent[],
+  nowMs: number = Date.now(),
+): string[] {
   const last = turns.at(-1);
   if (!last || last.role !== "user") return [];
+  if (last.timestampMs == null || !Number.isFinite(last.timestampMs)) return [];
+  if (nowMs - last.timestampMs > PENDING_REPLY_MAX_AGE_MS) return [];
   if (!focus.isGroup) return [focusBotName(focus)];
   return mentionedMemberNames(last.text, focus, roster);
 }
 
-/** Transcript-only answering names — avoids stale listAgents busy flags arriving late. */
-export function answeringMemberNames(focus: Agent, roster: Agent[], turns: ChatTurn[]): string[] {
-  return pendingReplyMemberNames(turns, focus, roster);
+/** Tool / streaming marker at the tail → that speaker (or the 1:1 focus bot) is working. */
+export function workingMemberNames(
+  turns: ChatTurn[],
+  focus: Agent,
+  roster: Agent[],
+  nowMs: number = Date.now(),
+): string[] {
+  const last = turns.at(-1);
+  if (!last || last.role !== "tool") return [];
+  // No host timestamp → do not treat as working (avoids permanent busy + poll churn).
+  if (last.timestampMs == null || !Number.isFinite(last.timestampMs)) return [];
+  if (nowMs - last.timestampMs > TOOL_WORKING_MAX_AGE_MS) return [];
+  if (!focus.isGroup) return [focusBotName(focus)];
+  const live = roster.find((row) => row.id === focus.id) ?? focus;
+  if (last.speakerId) {
+    return [memberName(last.speakerId, live, roster)];
+  }
+  const name = last.speaker.trim();
+  if (!name || name === "assistant" || name === "unknown" || TOOL_SPEAKER_KINDS.has(name)) {
+    return [];
+  }
+  return [name];
+}
+
+/**
+ * Transcript-fast answering / working names.
+ * Pending @mention / 1:1 user reply, else a trailing tool/streaming marker.
+ * Does not use roster isRunning — listAgents is too slow and a delayed
+ * "X is answering…" feels worse than no indicator (match the app only when we can be timely).
+ */
+export function answeringMemberNames(
+  focus: Agent,
+  roster: Agent[],
+  turns: ChatTurn[],
+  nowMs: number = Date.now(),
+): string[] {
+  const pending = pendingReplyMemberNames(turns, focus, roster, nowMs);
+  if (pending.length > 0) return pending;
+  return workingMemberNames(turns, focus, roster, nowMs);
 }

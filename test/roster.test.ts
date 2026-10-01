@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Agent } from "../src/client/types.js";
-import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows, answeringIndicator, answeringMemberNames, busyMemberNames, busyNamesSignature, pendingReplyMemberNames, mentionedMemberNames } from "../src/tui/roster.ts";
+import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows, answeringIndicator, answeringMemberNames, busyMemberNames, busyNamesSignature, pendingReplyMemberNames, mentionedMemberNames, workingMemberNames, PENDING_REPLY_MAX_AGE_MS } from "../src/tui/roster.ts";
+import { TOOL_WORKING_MAX_AGE_MS } from "../src/timing.js";
 import type { ChatTurn } from "../src/client/types.js";
 
 const ada: Agent = { id: "ada", name: "Ada", isGroup: false };
@@ -74,31 +75,112 @@ test("answeringIndicator names members who areRunning", () => {
 });
 
 test("pendingReplyMemberNames infers a 1:1 bot from the last user turn", () => {
-  const turns: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "hello" }];
-  assert.deepEqual(pendingReplyMemberNames(turns, ada, [ada]), ["Ada"]);
+  const now = 1_000_000;
+  const turns: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "hello", timestampMs: now }];
+  assert.deepEqual(pendingReplyMemberNames(turns, ada, [ada], now), ["Ada"]);
   assert.deepEqual(
-    pendingReplyMemberNames([{ id: "2", role: "assistant", speaker: "Ada", text: "hi" }], ada, [ada]),
+    pendingReplyMemberNames([{ id: "2", role: "assistant", speaker: "Ada", text: "hi" }], ada, [ada], now),
     [],
   );
 });
 
 test("pendingReplyMemberNames uses @mentions in rooms", () => {
-  const turns: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "@Dev status?" }];
-  assert.deepEqual(pendingReplyMemberNames(turns, room, [room]), ["Dev"]);
+  const now = 1_000_000;
+  const turns: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "@Dev status?", timestampMs: now },
+  ];
+  assert.deepEqual(pendingReplyMemberNames(turns, room, [room], now), ["Dev"]);
   assert.deepEqual(
-    pendingReplyMemberNames([{ id: "1", role: "user", speaker: "you", text: "hello all" }], room, [room]),
+    pendingReplyMemberNames(
+      [{ id: "1", role: "user", speaker: "you", text: "hello all", timestampMs: now }],
+      room,
+      [room],
+      now,
+    ),
     [],
   );
   assert.deepEqual(mentionedMemberNames("@Chief of Staff ping", room, [room]), ["Chief of Staff"]);
 });
 
 test("answeringMemberNames follows transcript pending, not roster busy flags", () => {
+  const now = 1_000_000;
   const dev: Agent = { id: "dev", name: "Dev", isGroup: false, isRunning: true };
-  const waiting: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "@Dev go" }];
-  assert.deepEqual(answeringMemberNames(room, [dev, room], waiting), ["Dev"]);
+  const waiting: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "@Dev go", timestampMs: now },
+  ];
+  assert.deepEqual(answeringMemberNames(room, [dev, room], waiting, now), ["Dev"]);
   const done: ChatTurn[] = [
-    { id: "1", role: "user", speaker: "you", text: "@Dev go" },
+    { id: "1", role: "user", speaker: "you", text: "@Dev go", timestampMs: now },
     { id: "2", role: "assistant", speaker: "Dev", text: "on it" },
   ];
-  assert.deepEqual(answeringMemberNames(room, [dev, room], done), []);
+  assert.deepEqual(answeringMemberNames(room, [dev, room], done, now), []);
+});
+
+test("pendingReplyMemberNames ignores stale or untimestamped user tails", () => {
+  const now = 2_000_000;
+  assert.deepEqual(
+    pendingReplyMemberNames(
+      [
+        {
+          id: "1",
+          role: "user",
+          speaker: "you",
+          text: "hello",
+          timestampMs: now - PENDING_REPLY_MAX_AGE_MS - 1,
+        },
+      ],
+      ada,
+      [ada],
+      now,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    pendingReplyMemberNames([{ id: "1", role: "user", speaker: "you", text: "hello" }], ada, [ada], now),
+    [],
+  );
+});
+
+test("answeringMemberNames in channels ignores delayed roster busy without @mention", () => {
+  const dev: Agent = { id: "dev", name: "Dev", isGroup: false, isRunning: true };
+  const turns: ChatTurn[] = [{ id: "1", role: "user", speaker: "you", text: "hello all" }];
+  assert.deepEqual(answeringMemberNames(room, [dev, room], turns), []);
+});
+
+test("answeringMemberNames treats trailing tool markers as working", () => {
+  const now = 1_000_000;
+  const working: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "go" },
+    { id: "2", role: "tool", speaker: "Ada", speakerId: "ada", text: "", timestampMs: now - 1_000 },
+  ];
+  assert.deepEqual(answeringMemberNames(ada, [ada], working, now), ["Ada"]);
+  const roomWorking: ChatTurn[] = [
+    { id: "1", role: "user", speaker: "you", text: "@Dev go" },
+    { id: "2", role: "assistant", speaker: "Dev", text: "ok" },
+    { id: "3", role: "tool", speaker: "Dev", speakerId: "dev", text: "", timestampMs: now - 1_000 },
+  ];
+  assert.deepEqual(workingMemberNames(roomWorking, room, [room], now), ["Dev"]);
+  assert.deepEqual(answeringMemberNames(room, [room], roomWorking, now), ["Dev"]);
+});
+
+test("workingMemberNames ignores stale tool markers", () => {
+  const now = 2_000_000;
+  const stale: ChatTurn[] = [
+    {
+      id: "2",
+      role: "tool",
+      speaker: "Ada",
+      speakerId: "ada",
+      text: "",
+      timestampMs: now - TOOL_WORKING_MAX_AGE_MS - 1,
+    },
+  ];
+  assert.deepEqual(workingMemberNames(stale, ada, [ada], now), []);
+});
+
+test("workingMemberNames ignores tool markers without timestampMs", () => {
+  const unmarked: ChatTurn[] = [
+    { id: "2", role: "tool", speaker: "Ada", speakerId: "ada", text: "" },
+  ];
+  assert.deepEqual(workingMemberNames(unmarked, ada, [ada], Date.now()), []);
 });

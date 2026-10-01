@@ -1,7 +1,7 @@
 {
   "name": "grokbot-tui",
   "version": "0.2.0",
-  "description": "Unofficial terminal UI for chatting with Grok Bot agents",
+  "description": "Terminal UI for chatting with Grok Bot agents",
   "type": "module",
   "bin": {
     "grok-tui": "dist/cli.js"

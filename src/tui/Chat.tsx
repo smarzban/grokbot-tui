@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Agent, ChatTurn, HostClient } from "../client/types.js";
 import { HostClientError } from "../client/types.js";
 import { errorMessage } from "../redact.js";
-import { DEFAULT_ROSTER_POLL_MS } from "../timing.js";
+import { DEFAULT_ROSTER_POLL_MS, isTranscriptPollBusy, nextUnchangedPollTicks, transcriptPollDelayMs } from "../timing.js";
 import {
   composeInnerHeight,
   FOOTER_HINT,
@@ -185,6 +185,7 @@ export function Chat({
   const [mentionDismissed, setMentionDismissed] = useState(false);
   const [pollReady, setPollReady] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const pollDelayAbortRef = useRef<AbortController | null>(null);
   const transcriptRevisionRef = useRef(0);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -194,6 +195,8 @@ export function Chat({
   agentRef.current = agent;
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
+  const liveRosterRef = useRef(liveRoster);
+  liveRosterRef.current = liveRoster;
   const busySigRef = useRef(busyNamesSignature(answeringMemberNames(agent, roster, [])));
   const agentId = agent.id;
   const liveAgent = liveRoster.find((row) => row.id === agentId) ?? agent;
@@ -342,6 +345,7 @@ export function Chat({
   useEffect(() => {
     if (!pollReady) return;
     let cancelled = false;
+    let unchangedTicks = 0;
     const loop = async (): Promise<void> => {
       while (!cancelled) {
         const statusAtStart = statusRef.current.kind;
@@ -352,6 +356,8 @@ export function Chat({
           statusKind: statusAtStart,
         });
         if (cancelled) return;
+        let appliedChange = false;
+        let paceTurns = turnsRef.current;
         if (
           shouldApplyPollTranscript({
             snapshot,
@@ -361,23 +367,51 @@ export function Chat({
             transcriptRevisionNow: transcriptRevisionRef.current,
           })
         ) {
-          let merged: ChatTurn[] | undefined;
+          const before = turnsRef.current;
+          const merged = mergePolledTranscript(before, snapshot.history!);
+          appliedChange = merged !== before;
+          // Keep the loop's view of turns current for pacing; render will sync the ref.
+          turnsRef.current = merged;
+          paceTurns = merged;
           setTurns((prev) => {
-            merged = mergePolledTranscript(prev, snapshot.history!);
-            return merged;
+            if (prev === before) return merged;
+            const remixed = mergePolledTranscript(prev, snapshot.history!);
+            turnsRef.current = remixed;
+            paceTurns = remixed;
+            return remixed;
           });
-          if (merged) scheduleImageHydrate(merged);
+          scheduleImageHydrate(paceTurns);
         }
+        const answering =
+          answeringMemberNames(agentRef.current, liveRosterRef.current, paceTurns).length > 0;
+        const busy = isTranscriptPollBusy(statusRef.current.kind, answering);
+        unchangedTicks = nextUnchangedPollTicks({
+          unchangedTicks,
+          transcriptFetched: snapshot.transcriptFetched,
+          appliedChange,
+          busy,
+        });
+        const waitMs = transcriptPollDelayMs({
+          idleMs: pollMs,
+          busy,
+          unchangedTicks,
+        });
+        const delayAbort = new AbortController();
+        pollDelayAbortRef.current = delayAbort;
         try {
-          await delay(pollMs);
+          await delay(waitMs, { signal: delayAbort.signal });
         } catch {
-          return;
+          if (cancelled) return;
+          // Woken early (send / status change) — continue the loop.
+        } finally {
+          if (pollDelayAbortRef.current === delayAbort) pollDelayAbortRef.current = null;
         }
       }
     };
     void loop();
     return () => {
       cancelled = true;
+      pollDelayAbortRef.current?.abort();
     };
   }, [agentId, client, pollMs, pollReady, scheduleImageHydrate]);
 
@@ -423,10 +457,12 @@ export function Chat({
         timestampMs: Date.now(),
       };
       setTurns((current) => [...current, optimistic]);
+      turnsRef.current = [...turnsRef.current, optimistic];
       setDraft(EMPTY_DRAFT);
       setScrollOffset(0);
       setStatus({ kind: "sending" });
-      syncAnsweringLine(agentRef.current, liveRoster, [...turnsRef.current, optimistic]);
+      syncAnsweringLine(agentRef.current, liveRoster, turnsRef.current);
+      pollDelayAbortRef.current?.abort();
 
       const controller = new AbortController();
       abortRef.current = controller;

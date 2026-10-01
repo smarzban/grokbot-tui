@@ -357,10 +357,41 @@ export function imagesFromHostEntry(value: unknown): ChatImage[] {
   }));
 }
 
+const TOOL_KINDS = new Set(["tool-call", "tool-result", "tool"]);
+
+/** Host tool / streaming rows — activity only; never dump tool names into the UI. */
+export function isToolActivityEntry(entry: Record<string, unknown>): boolean {
+  if (entry.role === "tool") return true;
+  if (entry.streaming === true) return true;
+  const kind = asNonEmptyString(entry.kind);
+  return kind != null && TOOL_KINDS.has(kind);
+}
+
 function roleFromEntry(entry: Record<string, unknown>, speaker: string): ChatTurn["role"] {
   if (entry.role === "user" || speaker === "user" || entry.kind === "user-attachment") return "user";
   if (entry.role === "system") return "system";
+  if (isToolActivityEntry(entry)) return "tool";
   return "assistant";
+}
+
+function pushActivityTurn(
+  turns: ChatTurn[],
+  rec: Record<string, unknown>,
+  index: number,
+  images: ChatImage[] = [],
+): void {
+  const { speaker, agentId } = speakerFromEntry(rec);
+  const timestampMs =
+    typeof rec.timestampMs === "number" && Number.isFinite(rec.timestampMs) ? rec.timestampMs : undefined;
+  turns.push({
+    id: `${timestampMs ?? "t"}-${index}-${speaker}`,
+    role: "tool",
+    speaker,
+    ...(agentId ? { speakerId: agentId } : {}),
+    text: "",
+    ...(timestampMs != null ? { timestampMs } : {}),
+    ...(images.length > 0 ? { images } : {}),
+  });
 }
 
 export function parseHostTranscript(payload: unknown): ChatTurn[] {
@@ -383,6 +414,10 @@ export function parseHostTranscript(payload: unknown): ChatTurn[] {
         ...(timestampMs != null ? { timestampMs } : {}),
         ...(images.length > 0 ? { images } : {}),
       });
+      return;
+    }
+    if (isToolActivityEntry(rec)) {
+      pushActivityTurn(turns, rec, index, images);
       return;
     }
     if (images.length === 0) return;

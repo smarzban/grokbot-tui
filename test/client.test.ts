@@ -427,9 +427,36 @@ test("transcript parser reads host message and send-message rows", () => {
       { kind: "tool-call", name: "ignored" },
     ],
   });
-  assert.equal(turns.length, 2);
+  assert.equal(turns.length, 3);
   assert.equal(turns[0]?.role, "user");
   assert.equal(turns[1]?.text, "hello from Ada");
+  assert.equal(turns[2]?.role, "tool");
+  assert.equal(turns[2]?.text, "");
+});
+
+test("transcript parser emits tool markers for streaming and tool-result", () => {
+  const turns = turnsFromHostTranscript({
+    entries: [
+      {
+        kind: "message",
+        role: "assistant",
+        content: "partial",
+        streaming: true,
+        author: { id: "ada", name: "Ada" },
+        timestampMs: 3,
+      },
+      {
+        kind: "tool-result",
+        author: { id: "ada", name: "Ada" },
+        timestampMs: 4,
+      },
+    ],
+  });
+  assert.equal(turns.length, 2);
+  assert.equal(turns[0]?.role, "tool");
+  assert.equal(turns[0]?.speaker, "Ada");
+  assert.equal(turns[1]?.role, "tool");
+  assert.equal(turns[1]?.speakerId, "ada");
 });
 
 test("transcript parser keeps group send-message author id and name", () => {
