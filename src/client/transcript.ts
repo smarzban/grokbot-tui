@@ -379,17 +379,18 @@ function pushActivityTurn(
   rec: Record<string, unknown>,
   index: number,
   images: ChatImage[] = [],
+  nowMs: number = Date.now(),
 ): void {
   const { speaker, agentId } = speakerFromEntry(rec);
   const timestampMs =
-    typeof rec.timestampMs === "number" && Number.isFinite(rec.timestampMs) ? rec.timestampMs : undefined;
+    typeof rec.timestampMs === "number" && Number.isFinite(rec.timestampMs) ? rec.timestampMs : nowMs;
   turns.push({
-    id: `${timestampMs ?? "t"}-${index}-${speaker}`,
+    id: `${timestampMs}-${index}-${speaker}`,
     role: "tool",
     speaker,
     ...(agentId ? { speakerId: agentId } : {}),
     text: "",
-    ...(timestampMs != null ? { timestampMs } : {}),
+    timestampMs,
     ...(images.length > 0 ? { images } : {}),
   });
 }

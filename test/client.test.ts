@@ -450,13 +450,19 @@ test("transcript parser emits tool markers for streaming and tool-result", () =>
         author: { id: "ada", name: "Ada" },
         timestampMs: 4,
       },
+      {
+        kind: "tool-call",
+        author: { id: "ada", name: "Ada" },
+      },
     ],
   });
-  assert.equal(turns.length, 2);
+  assert.equal(turns.length, 3);
   assert.equal(turns[0]?.role, "tool");
   assert.equal(turns[0]?.speaker, "Ada");
   assert.equal(turns[1]?.role, "tool");
   assert.equal(turns[1]?.speakerId, "ada");
+  assert.equal(turns[2]?.role, "tool");
+  assert.ok(typeof turns[2]?.timestampMs === "number");
 });
 
 test("transcript parser keeps group send-message author id and name", () => {
