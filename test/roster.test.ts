@@ -140,3 +140,10 @@ test("workingMemberNames ignores stale tool markers", () => {
   ];
   assert.deepEqual(workingMemberNames(stale, ada, [ada], now), []);
 });
+
+test("workingMemberNames ignores tool markers without timestampMs", () => {
+  const unmarked: ChatTurn[] = [
+    { id: "2", role: "tool", speaker: "Ada", speakerId: "ada", text: "" },
+  ];
+  assert.deepEqual(workingMemberNames(unmarked, ada, [ada], Date.now()), []);
+});

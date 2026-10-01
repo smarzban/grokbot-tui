@@ -148,13 +148,9 @@ export function workingMemberNames(
 ): string[] {
   const last = turns.at(-1);
   if (!last || last.role !== "tool") return [];
-  if (
-    last.timestampMs != null &&
-    Number.isFinite(last.timestampMs) &&
-    nowMs - last.timestampMs > TOOL_WORKING_MAX_AGE_MS
-  ) {
-    return [];
-  }
+  // No host timestamp → do not treat as working (avoids permanent busy + poll churn).
+  if (last.timestampMs == null || !Number.isFinite(last.timestampMs)) return [];
+  if (nowMs - last.timestampMs > TOOL_WORKING_MAX_AGE_MS) return [];
   if (!focus.isGroup) return [focusBotName(focus)];
   const live = roster.find((row) => row.id === focus.id) ?? focus;
   if (last.speakerId) {
