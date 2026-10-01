@@ -1,3 +1,4 @@
+import { TOOL_WORKING_MAX_AGE_MS } from "../timing.js";
 import type { Agent, ChatTurn } from "../client/types.js";
 import { mentionNames } from "./mentions.js";
 
@@ -139,9 +140,21 @@ export function pendingReplyMemberNames(turns: ChatTurn[], focus: Agent, roster:
 }
 
 /** Tool / streaming marker at the tail → that speaker (or the 1:1 focus bot) is working. */
-export function workingMemberNames(turns: ChatTurn[], focus: Agent, roster: Agent[]): string[] {
+export function workingMemberNames(
+  turns: ChatTurn[],
+  focus: Agent,
+  roster: Agent[],
+  nowMs: number = Date.now(),
+): string[] {
   const last = turns.at(-1);
   if (!last || last.role !== "tool") return [];
+  if (
+    last.timestampMs != null &&
+    Number.isFinite(last.timestampMs) &&
+    nowMs - last.timestampMs > TOOL_WORKING_MAX_AGE_MS
+  ) {
+    return [];
+  }
   if (!focus.isGroup) return [focusBotName(focus)];
   const live = roster.find((row) => row.id === focus.id) ?? focus;
   if (last.speakerId) {
@@ -160,8 +173,13 @@ export function workingMemberNames(turns: ChatTurn[], focus: Agent, roster: Agen
  * Does not use roster isRunning — listAgents is too slow and a delayed
  * "X is answering…" feels worse than no indicator (match the app only when we can be timely).
  */
-export function answeringMemberNames(focus: Agent, roster: Agent[], turns: ChatTurn[]): string[] {
+export function answeringMemberNames(
+  focus: Agent,
+  roster: Agent[],
+  turns: ChatTurn[],
+  nowMs: number = Date.now(),
+): string[] {
   const pending = pendingReplyMemberNames(turns, focus, roster);
   if (pending.length > 0) return pending;
-  return workingMemberNames(turns, focus, roster);
+  return workingMemberNames(turns, focus, roster, nowMs);
 }

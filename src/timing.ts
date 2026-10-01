@@ -6,6 +6,8 @@ export const DEFAULT_ROSTER_POLL_MS = 5_000;
 export const IDLE_POLL_STABLE_TICKS = 4;
 /** Backoff interval when the transcript has been quiet. */
 export const IDLE_POLL_BACKOFF_MS = 4_000;
+/** Drop "working" from a trailing tool marker older than this. */
+export const TOOL_WORKING_MAX_AGE_MS = 60_000;
 
 /** Default cap on 1:1 wait-for-reply. Esc still cancels earlier. */
 export const DEFAULT_WAIT_TIMEOUT_MS = 600_000;
@@ -43,6 +45,21 @@ export function transcriptPollDelayMs(input: TranscriptPollPaceInput): number {
 /** Busy for adaptive transcript poll: in-flight send or answering/working line. */
 export function isTranscriptPollBusy(statusKind: string, answering: boolean): boolean {
   return answering || statusKind === "sending" || statusKind === "loading";
+}
+
+/**
+ * Next unchanged-tick count after a poll cycle.
+ * Skipped fetches (sending/loading) and busy states do not advance backoff.
+ */
+export function nextUnchangedPollTicks(input: {
+  unchangedTicks: number;
+  transcriptFetched: boolean;
+  appliedChange: boolean;
+  busy: boolean;
+}): number {
+  if (input.busy || input.appliedChange) return 0;
+  if (!input.transcriptFetched) return input.unchangedTicks;
+  return input.unchangedTicks + 1;
 }
 
 /**

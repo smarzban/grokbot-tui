@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Agent } from "../src/client/types.js";
-import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows, answeringIndicator, answeringMemberNames, busyMemberNames, busyNamesSignature, pendingReplyMemberNames, mentionedMemberNames } from "../src/tui/roster.ts";
+import { memberListLabel, pickerItems, pickerRows, splitRoster, visiblePickerRows, answeringIndicator, answeringMemberNames, busyMemberNames, busyNamesSignature, pendingReplyMemberNames, mentionedMemberNames, workingMemberNames } from "../src/tui/roster.ts";
+import { TOOL_WORKING_MAX_AGE_MS } from "../src/timing.js";
 import type { ChatTurn } from "../src/client/types.js";
 
 const ada: Agent = { id: "ada", name: "Ada", isGroup: false };
@@ -110,15 +111,32 @@ test("answeringMemberNames in channels ignores delayed roster busy without @ment
 });
 
 test("answeringMemberNames treats trailing tool markers as working", () => {
+  const now = 1_000_000;
   const working: ChatTurn[] = [
     { id: "1", role: "user", speaker: "you", text: "go" },
-    { id: "2", role: "tool", speaker: "Ada", speakerId: "ada", text: "" },
+    { id: "2", role: "tool", speaker: "Ada", speakerId: "ada", text: "", timestampMs: now - 1_000 },
   ];
-  assert.deepEqual(answeringMemberNames(ada, [ada], working), ["Ada"]);
+  assert.deepEqual(answeringMemberNames(ada, [ada], working, now), ["Ada"]);
   const roomWorking: ChatTurn[] = [
     { id: "1", role: "user", speaker: "you", text: "@Dev go" },
     { id: "2", role: "assistant", speaker: "Dev", text: "ok" },
-    { id: "3", role: "tool", speaker: "Dev", speakerId: "dev", text: "" },
+    { id: "3", role: "tool", speaker: "Dev", speakerId: "dev", text: "", timestampMs: now - 1_000 },
   ];
-  assert.deepEqual(answeringMemberNames(room, [room], roomWorking), ["Dev"]);
+  assert.deepEqual(workingMemberNames(roomWorking, room, [room], now), ["Dev"]);
+  assert.deepEqual(answeringMemberNames(room, [room], roomWorking, now), ["Dev"]);
+});
+
+test("workingMemberNames ignores stale tool markers", () => {
+  const now = 2_000_000;
+  const stale: ChatTurn[] = [
+    {
+      id: "2",
+      role: "tool",
+      speaker: "Ada",
+      speakerId: "ada",
+      text: "",
+      timestampMs: now - TOOL_WORKING_MAX_AGE_MS - 1,
+    },
+  ];
+  assert.deepEqual(workingMemberNames(stale, ada, [ada], now), []);
 });

@@ -14,6 +14,7 @@ import {
   IDLE_POLL_STABLE_TICKS,
   MIN_POLL_MS,
   isTranscriptPollBusy,
+  nextUnchangedPollTicks,
   parseWaitTimeoutMs,
   transcriptPollDelayMs,
 } from "../src/timing.js";
@@ -108,4 +109,43 @@ test("isTranscriptPollBusy covers sending and answering", () => {
   assert.equal(isTranscriptPollBusy("sending", false), true);
   assert.equal(isTranscriptPollBusy("idle", true), true);
   assert.equal(isTranscriptPollBusy("loading", false), true);
+});
+
+test("nextUnchangedPollTicks ignores skipped fetches and busy ticks", () => {
+  assert.equal(
+    nextUnchangedPollTicks({
+      unchangedTicks: 3,
+      transcriptFetched: false,
+      appliedChange: false,
+      busy: false,
+    }),
+    3,
+  );
+  assert.equal(
+    nextUnchangedPollTicks({
+      unchangedTicks: 3,
+      transcriptFetched: true,
+      appliedChange: false,
+      busy: true,
+    }),
+    0,
+  );
+  assert.equal(
+    nextUnchangedPollTicks({
+      unchangedTicks: 3,
+      transcriptFetched: true,
+      appliedChange: true,
+      busy: false,
+    }),
+    0,
+  );
+  assert.equal(
+    nextUnchangedPollTicks({
+      unchangedTicks: 3,
+      transcriptFetched: true,
+      appliedChange: false,
+      busy: false,
+    }),
+    4,
+  );
 });
