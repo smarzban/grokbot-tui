@@ -11,8 +11,9 @@ import { execFile as execFileCb } from "node:child_process";
 import { pbkdf2Sync, createDecipheriv } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import type { CursorAccount } from "./backendSend.js";
 import { trimGatewayUrl } from "./http.js";
 
 const execFile = promisify(execFileCb);
@@ -27,6 +28,8 @@ export type DesktopSession = {
   gatewayUrl: string;
   token: string;
   headers: Record<string, string>;
+  /** The app's Cursor login, read fresh per call so token refreshes are picked up. */
+  cursorAccount?: () => Promise<CursorAccount>;
 };
 
 export type DesktopSessionIo = {
@@ -125,6 +128,23 @@ export function sessionFromCleartext(clear: string): DesktopSession {
   };
 }
 
+/** Active Cursor account from `sand-secrets.json` next to the descriptor. */
+export function readCursorAccount(secretsJson: string, password: string): CursorAccount {
+  const stored = JSON.parse(secretsJson) as Record<string, string>;
+  const accounts = JSON.parse(stored["cursor-accounts"] ?? "") as {
+    active: string | number;
+    accounts: Record<string, Record<string, string>>;
+  };
+  const account = accounts.accounts[accounts.active];
+  const encryptedToken = account?.["cursor-access-token"];
+  if (!encryptedToken) throw new Error("Grok Bot has no saved Cursor login.");
+  const team = account["cursor-selected-team-id"];
+  return {
+    token: decryptSafeStorageString(encryptedToken, password).trim(),
+    ...(team ? { teamId: decryptSafeStorageString(team, password).trim() } : {}),
+  };
+}
+
 export async function loadDesktopSession(io: DesktopSessionIo = {}): Promise<DesktopSession | null> {
   const platform = io.platform ?? process.platform;
   if (platform !== "darwin") return null;
@@ -139,7 +159,12 @@ export async function loadDesktopSession(io: DesktopSessionIo = {}): Promise<Des
     const wrapped = JSON.parse(readDescriptor(path)) as unknown;
     const encrypted = encryptedPayloadFromDescriptor(wrapped);
     const password = await readPassword();
-    return sessionFromCleartext(decryptSafeStorageString(encrypted, password));
+    const session = sessionFromCleartext(decryptSafeStorageString(encrypted, password));
+    const secretsPath = join(dirname(path), "sand-secrets.json");
+    if (io.readDescriptor || existsSync(secretsPath)) {
+      session.cursorAccount = async () => readCursorAccount(readDescriptor(secretsPath), await readPassword());
+    }
+    return session;
   } catch {
     return null;
   }

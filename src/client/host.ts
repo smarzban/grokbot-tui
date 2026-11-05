@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { redact } from "../redact.js";
+import { sendViaBackend, type CursorAccount } from "./backendSend.js";
 import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
 import { isNotFoundError, mapHostError } from "./errors.js";
 import { gatewayPost, trimGatewayUrl, type GatewaySession } from "./http.js";
@@ -28,6 +29,8 @@ import {
 export type HttpHostOptions = GatewaySession & {
   source?: HostSource;
   fetch?: typeof fetch;
+  /** When set, sends go to the Cursor backend instead of the gateway `/api/sendPrompt`. */
+  cursorAccount?: () => Promise<CursorAccount>;
 };
 
 function sessionSecrets(session: GatewaySession): string[] {
@@ -57,6 +60,8 @@ export class HttpHostClient implements HostClient {
   readonly rosterCacheKey: string;
   readonly #session: GatewaySession;
   readonly #fetch?: typeof fetch;
+  readonly #cursorAccount?: () => Promise<CursorAccount>;
+  readonly #machineId = randomUUID();
   /** Coalesce concurrent listAgents calls — the gateway is slow and callers overlap. */
   #listAgentsInflight: Promise<Agent[]> | null = null;
 
@@ -71,6 +76,7 @@ export class HttpHostClient implements HostClient {
     const credentialId = createHash("sha256").update(options.token).digest("hex").slice(0, 16);
     this.rosterCacheKey = rosterCacheKey(gatewayUrl, credentialId);
     this.#fetch = options.fetch;
+    if (options.cursorAccount) this.#cursorAccount = options.cursorAccount;
   }
 
   #fetchImpl(): typeof fetch {
@@ -162,15 +168,22 @@ export class HttpHostClient implements HostClient {
           return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
         }
       }
-      const sent = await this.#call(
-        "sendPrompt",
-        {
-          agentId: input.agentId,
-          prompt: input.prompt,
-          clientNonce: randomUUID(),
-        },
-        input.signal,
-      );
+      const clientNonce = randomUUID();
+      const sent = this.#cursorAccount
+        ? await sendViaBackend({
+            agentId: input.agentId,
+            prompt: input.prompt,
+            clientNonce,
+            machineId: this.#machineId,
+            account: await this.#cursorAccount(),
+            fetch: this.#fetchImpl(),
+            ...(input.signal ? { signal: input.signal } : {}),
+          })
+        : await this.#call(
+            "sendPrompt",
+            { agentId: input.agentId, prompt: input.prompt, clientNonce },
+            input.signal,
+          );
       const accepted =
         sent != null && typeof sent === "object" && "accepted" in sent
           ? (sent as { accepted?: boolean }).accepted !== false

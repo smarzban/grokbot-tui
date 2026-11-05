@@ -45,6 +45,7 @@ export async function openHostClient(options: OpenClientOptions): Promise<HostCl
       gatewayUrl: desktop.gatewayUrl,
       token: desktop.token,
       headers: desktop.headers,
+      ...(desktop.cursorAccount ? { cursorAccount: desktop.cursorAccount } : {}),
       source: "desktop",
       fetch: options.fetch,
     });
