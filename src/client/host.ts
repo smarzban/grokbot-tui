@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { redact } from "../redact.js";
 import { fetchBytesWithHeaders, hydrateTurnImages } from "./attachments.js";
+import { sendViaBackend } from "./backendSend.js";
 import { isNotFoundError, mapHostError } from "./errors.js";
 import { gatewayPost, trimGatewayUrl, type GatewaySession } from "./http.js";
 import { rosterCacheKey } from "./rosterCache.js";
@@ -43,11 +44,11 @@ function sessionSecrets(session: GatewaySession): string[] {
   return values;
 }
 
-function mapSessionError(err: unknown, session: GatewaySession): HostClientError {
+function mapSessionError(err: unknown, session: GatewaySession, extraSecrets: string[] = []): HostClientError {
   const mapped = mapHostError(err, session.token);
   let message = mapped.message;
-  for (const secret of sessionSecrets(session)) {
-    message = redact(message, secret);
+  for (const secret of [...sessionSecrets(session), ...extraSecrets]) {
+    if (secret) message = redact(message, secret);
   }
   if (message === mapped.message) return mapped;
   return new HostClientError(mapped.kind, message, mapped.status != null ? { status: mapped.status } : undefined);
@@ -62,6 +63,9 @@ export class HttpHostClient implements HostClient {
   readonly rosterCacheKey: string;
   readonly #session: GatewaySession;
   readonly #fetch?: typeof fetch;
+  readonly #cursorAccount?: () => Promise<CursorAccount | null>;
+  readonly #clientVersion?: () => string | undefined;
+  readonly #machineId = randomUUID();
   /** Coalesce concurrent listAgents calls — the gateway is slow and callers overlap. */
   #listAgentsInflight: Promise<Agent[]> | null = null;
 
@@ -76,6 +80,8 @@ export class HttpHostClient implements HostClient {
     const credentialId = createHash("sha256").update(options.token).digest("hex").slice(0, 16);
     this.rosterCacheKey = rosterCacheKey(gatewayUrl, credentialId);
     this.#fetch = options.fetch;
+    this.#cursorAccount = options.cursorAccount;
+    this.#clientVersion = options.clientVersion;
   }
 
   #fetchImpl(): typeof fetch {
@@ -155,6 +161,7 @@ export class HttpHostClient implements HostClient {
       void maybeInterrupt();
     };
     input.signal?.addEventListener("abort", onAbort, { once: true });
+    let cursorSecrets: string[] = [];
     try {
       if (wait) {
         const prior = await this.getTranscript(input.agentId, DEFAULT_TRANSCRIPT_LIMIT, {
@@ -167,15 +174,33 @@ export class HttpHostClient implements HostClient {
           return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
         }
       }
-      const sent = await this.#call(
-        "sendPrompt",
-        {
-          agentId: input.agentId,
-          prompt: input.prompt,
-          clientNonce: randomUUID(),
-        },
-        input.signal,
-      );
+      const clientNonce = randomUUID();
+      const account = this.#cursorAccount ? await this.#cursorAccount() : null;
+      if (account) {
+        cursorSecrets = [account.token];
+        if (account.teamId) cursorSecrets.push(account.teamId);
+      }
+      const clientVersion = this.#clientVersion?.();
+      const sent = account
+        ? await sendViaBackend({
+            agentId: input.agentId,
+            prompt: input.prompt,
+            clientNonce,
+            machineId: this.#machineId,
+            account,
+            ...(clientVersion ? { clientVersion } : {}),
+            fetch: this.#fetchImpl(),
+            ...(input.signal ? { signal: input.signal } : {}),
+          })
+        : await this.#call(
+            "sendPrompt",
+            {
+              agentId: input.agentId,
+              prompt: input.prompt,
+              clientNonce,
+            },
+            input.signal,
+          );
       const accepted =
         sent != null && typeof sent === "object" && "accepted" in sent
           ? (sent as { accepted?: boolean }).accepted !== false
@@ -205,7 +230,7 @@ export class HttpHostClient implements HostClient {
         await maybeInterrupt();
         return { accepted: true, status: "cancelled", elapsedMs: Date.now() - startedAt };
       }
-      throw mapSessionError(err, this.#session);
+      throw mapSessionError(err, this.#session, cursorSecrets);
     } finally {
       input.signal?.removeEventListener("abort", onAbort);
     }

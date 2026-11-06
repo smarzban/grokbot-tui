@@ -17,9 +17,10 @@ import { trimGatewayUrl } from "./http.js";
 
 const execFile = promisify(execFileCb);
 
-const SAFE_STORAGE_PREFIX = Buffer.from("v10");
+const SAFE_STORAGE_PREFIX_V10 = Buffer.from("v10");
+const SAFE_STORAGE_PREFIX_V11 = Buffer.from("v11");
+const LINUX_BASIC_TEXT_PASSWORD = "peanuts";
 const PBKDF2_SALT = "saltysalt";
-const PBKDF2_ITERATIONS = 1003;
 const PBKDF2_KEY_LEN = 16;
 const AES_IV = Buffer.alloc(16, 32); // 16 ASCII spaces
 
@@ -54,13 +55,28 @@ export async function readMacKeychainPassword(): Promise<string> {
   return stdout.trimEnd();
 }
 
-/** Chromium/Electron Safe Storage: payload starts with `v10`. */
-export function decryptSafeStorageString(encryptedBase64: string, password: string): string {
+/**
+ * Chromium Safe Storage. macOS is `v10` with 1003 PBKDF2 rounds.
+ * Linux `v10` is the basic-text password and one round. Linux `v11` is the
+ * keyring password, also one round.
+ */
+export function decryptSafeStorageString(
+  encryptedBase64: string,
+  password: string,
+  platform: NodeJS.Platform = "darwin",
+): string {
   const encrypted = Buffer.from(encryptedBase64, "base64");
-  if (encrypted.length < 4 || !encrypted.subarray(0, 3).equals(SAFE_STORAGE_PREFIX)) {
+  const prefix = encrypted.subarray(0, 3);
+  const linuxBasic = platform === "linux" && prefix.equals(SAFE_STORAGE_PREFIX_V10);
+  const supported =
+    prefix.equals(SAFE_STORAGE_PREFIX_V10) ||
+    (platform === "linux" && prefix.equals(SAFE_STORAGE_PREFIX_V11));
+  if (encrypted.length < 4 || !supported) {
     throw new Error("Unsupported Grok Bot Safe Storage format.");
   }
-  const key = pbkdf2Sync(password, PBKDF2_SALT, PBKDF2_ITERATIONS, PBKDF2_KEY_LEN, "sha1");
+  const iterations = platform === "linux" ? 1 : 1003;
+  const secret = linuxBasic ? LINUX_BASIC_TEXT_PASSWORD : password;
+  const key = pbkdf2Sync(secret, PBKDF2_SALT, iterations, PBKDF2_KEY_LEN, "sha1");
   const decipher = createDecipheriv("aes-128-cbc", key, AES_IV);
   return Buffer.concat([decipher.update(encrypted.subarray(3)), decipher.final()]).toString("utf8");
 }

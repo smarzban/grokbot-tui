@@ -3,7 +3,7 @@ import { MISSING_AUTH_MESSAGE } from "./errors.js";
 import { HttpHostClient } from "./host.js";
 import { MockHostClient, type MockHostOptions } from "./mock.js";
 import { loadDesktopSession, type DesktopSession } from "./session.js";
-import { HostClientError, type HostClient } from "./types.js";
+import { HostClientError, type CursorAccount, type HostClient } from "./types.js";
 
 export type OpenClientOptions = {
   config: AppConfig;
@@ -13,6 +13,9 @@ export type OpenClientOptions = {
   mockOptions?: MockHostOptions;
   fetch?: typeof fetch;
   loadDesktop?: () => Promise<DesktopSession | null>;
+  /** Fresh read of the desktop app's Cursor login. Used only for send. */
+  loadCursorAccount?: () => Promise<CursorAccount | null>;
+  readClientVersion?: () => string | undefined;
 };
 
 /**
@@ -35,6 +38,7 @@ export async function openHostClient(options: OpenClientOptions): Promise<HostCl
       token,
       source: "gateway",
       fetch: options.fetch,
+      ...cursorSendOptions(options),
     });
   }
 
@@ -47,8 +51,19 @@ export async function openHostClient(options: OpenClientOptions): Promise<HostCl
       headers: desktop.headers,
       source: "desktop",
       fetch: options.fetch,
+      ...cursorSendOptions(options),
     });
   }
 
   throw new HostClientError("missing-auth", MISSING_AUTH_MESSAGE);
+}
+
+function cursorSendOptions(options: OpenClientOptions): {
+  cursorAccount?: () => Promise<CursorAccount | null>;
+  clientVersion?: () => string | undefined;
+} {
+  return {
+    ...(options.loadCursorAccount ? { cursorAccount: options.loadCursorAccount } : {}),
+    ...(options.readClientVersion ? { clientVersion: options.readClientVersion } : {}),
+  };
 }

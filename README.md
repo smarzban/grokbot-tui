@@ -2,7 +2,7 @@
 
 Terminal chat for your Grok Bot bots and channels.
 
-This is not an official xAI or Cursor product. There is no public Grok Bot chat API. The TUI posts to the host gateway (`POST {gatewayUrl}/api/{method}` with a bearer token). Command names and response shapes can change without notice. Treat the gateway token and every transcript as secrets.
+This is not an official xAI or Cursor product. There is no public Grok Bot chat API. Listing bots and reading transcripts post to the host gateway (`POST {gatewayUrl}/api/{method}` with a bearer token). Sending a message uses the Grok Bot app's saved Cursor login when that login is on this machine, because the gateway rejects box-session sends. Command names and response shapes can change without notice. Treat the gateway token, the Cursor login, and every transcript as secrets.
 
 ## Screenshots
 
@@ -63,7 +63,7 @@ Pick one path. Do not put port 1340 on the public internet.
 2. Allow the Keychain prompt for "Grok Bot Safe Storage" when asked.
 3. Run `grok-tui` or `npm start` with no token in `.env`.
 
-The TUI reads `~/Library/Application Support/Grok Bot/gateway-descriptor.json`, decrypts the session, and keeps the gateway URL path (only a trailing slash is trimmed). A `GROKBOT_GATEWAY_URL` alone, without a token, does not block this desktop path.
+The TUI reads `~/Library/Application Support/Grok Bot/gateway-descriptor.json`, decrypts the session, and keeps the gateway URL path (only a trailing slash is trimmed). A `GROKBOT_GATEWAY_URL` alone, without a token, does not block this desktop path. Send also reads `sand-secrets.json` in that directory. On Linux the same file is `~/.config/Grok Bot/sand-secrets.json`, or under `$XDG_CONFIG_HOME`.
 
 ### Same machine as the host
 

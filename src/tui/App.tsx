@@ -1,6 +1,7 @@
 import { Box, Text, useWindowSize } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppConfig } from "../config.js";
+import { loadCursorAccount, readInstalledAppVersion } from "../client/cursorAccount.js";
 import { openHostClient } from "../client/factory.js";
 import { readRosterCache, writeRosterCache } from "../client/rosterCache.js";
 import { HostClientError, type Agent, type HostClient, type HostErrorKind } from "../client/types.js";
@@ -117,7 +118,13 @@ export function App({ config, token, mock }: Props) {
     setBootNote("Connecting to Grok Bot host…");
     setRosterRefreshing(false);
     try {
-      const next = await openHostClient({ config, token, mock });
+      const next = await openHostClient({
+        config,
+        token,
+        mock,
+        loadCursorAccount: () => loadCursorAccount(),
+        readClientVersion: () => readInstalledAppVersion(),
+      });
       setClient(next);
       const wantsDefault = Boolean(config.defaultAgent?.trim());
       const cacheKey = next.rosterCacheKey;
