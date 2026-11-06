@@ -96,7 +96,6 @@ export type SendPromptInput = {
   signal?: AbortSignal;
 };
 
-/** Cursor login used for backend sends. Distinct from the gateway box token. */
 export type CursorAccount = {
   token: string;
   teamId?: string;

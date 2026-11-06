@@ -13,7 +13,6 @@ export type OpenClientOptions = {
   mockOptions?: MockHostOptions;
   fetch?: typeof fetch;
   loadDesktop?: () => Promise<DesktopSession | null>;
-  /** Fresh read of the desktop app's Cursor login. Used only for send. */
   loadCursorAccount?: () => Promise<CursorAccount | null>;
   readClientVersion?: () => string | undefined;
 };

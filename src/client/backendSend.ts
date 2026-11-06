@@ -1,7 +1,3 @@
-/**
- * Cursor backend send. The gateway `/api/sendPrompt` rejects a box session.
- * The desktop app posts this RPC with the Cursor access token instead.
- */
 import { randomUUID } from "node:crypto";
 import type { CursorAccount } from "./types.js";
 import { GatewayHttpError } from "./http.js";
@@ -9,7 +5,6 @@ import { GatewayHttpError } from "./http.js";
 export const BACKEND_SEND_URL =
   "https://api2.cursor.sh/aiserver.v1.GrokBotService/SendGrokBotUserMessage";
 
-/** Stable Grok Bot build whose bundled proto defines this RPC. */
 export const DEFAULT_BACKEND_CLIENT_VERSION = "0.79.2";
 
 const SOURCE_DESKTOP = 1;

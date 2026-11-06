@@ -1,7 +1,3 @@
-/**
- * Cursor login saved by the Grok Bot desktop app. Sends need this token.
- * The gateway box token cannot call SendGrokBotUserMessage.
- */
 import { execFile as execFileCb } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
