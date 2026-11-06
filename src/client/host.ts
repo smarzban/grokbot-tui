@@ -21,6 +21,7 @@ import {
   type GetTranscriptOptions,
   type HostClient,
   type HostSource,
+  type CursorAccount,
   type SendPromptInput,
   type SendResult,
 } from "./types.js";
@@ -28,6 +29,10 @@ import {
 export type HttpHostOptions = GatewaySession & {
   source?: HostSource;
   fetch?: typeof fetch;
+  /** When this returns an account, send goes to the Cursor backend instead of `/api/sendPrompt`. */
+  cursorAccount?: () => Promise<CursorAccount | null>;
+  /** Installed Grok Bot version for the backend client header. */
+  clientVersion?: () => string | undefined;
 };
 
 function sessionSecrets(session: GatewaySession): string[] {

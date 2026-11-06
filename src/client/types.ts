@@ -96,6 +96,12 @@ export type SendPromptInput = {
   signal?: AbortSignal;
 };
 
+/** Cursor login used for backend sends. Distinct from the gateway box token. */
+export type CursorAccount = {
+  token: string;
+  teamId?: string;
+};
+
 /**
  * All live-host I/O goes through this interface so tests can inject a mock.
  * Implementations must never log gateway tokens or raw token-bearing payloads.
