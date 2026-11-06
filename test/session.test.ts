@@ -31,6 +31,13 @@ function descriptorCleartext(baseUrl = "https://edge.example/v1/sand/"): string 
   });
 }
 
+test("decryptSafeStorageString uses one round and the basic-text password on Linux v10", () => {
+  const key = pbkdf2Sync("peanuts", "saltysalt", 1, 16, "sha1");
+  const cipher = createCipheriv("aes-128-cbc", key, Buffer.alloc(16, 32));
+  const payload = Buffer.concat([Buffer.from("v10"), cipher.update("cursor-token", "utf8"), cipher.final()]);
+  assert.equal(decryptSafeStorageString(payload.toString("base64"), "not-the-key", "linux"), "cursor-token");
+});
+
 test("decryptSafeStorageString round-trips Chromium v10 payloads", () => {
   const clear = descriptorCleartext();
   const encrypted = encryptSafeStorage(clear, PASSWORD);
